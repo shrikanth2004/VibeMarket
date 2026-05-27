@@ -7,7 +7,7 @@
     { "src": "js/**/*.js", "use": "@vercel/static" }
   ],
   "routes": [
-    { "src": "/api/(.*)", "dest": "api/index.py" },
+    { "src": "/api/(.*)", "dest": "app.py" },
     { "src": "/css/(.*)", "dest": "/css/$1" },
     { "src": "/js/(.*)", "dest": "/js/$1" },
     { "src": "/", "dest": "/index.html" },
