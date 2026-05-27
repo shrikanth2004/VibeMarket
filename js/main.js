@@ -35,10 +35,100 @@ function refreshWishlistState() {
     .catch((err) => console.error('Error fetching wishlist state:', err));
 }
 
+function getFiltersFromUI() {
+  return {
+    search: document.getElementById('global-search')?.value.trim() || currentFilters.search || '',
+    category: currentFilters.category || '',
+    condition: document.getElementById('filter-condition')?.value || currentFilters.condition || '',
+    min_price: document.getElementById('filter-min-price')?.value || currentFilters.min_price || '',
+    max_price: document.getElementById('filter-max-price')?.value || currentFilters.max_price || '',
+    location: document.getElementById('filter-location')?.value || currentFilters.location || '',
+    sort_by: document.getElementById('filter-sort')?.value || currentFilters.sort_by || 'newest',
+  };
+}
+
+function buildSavedSearchPayload(filters) {
+  const payload = {
+    search: filters.search || null,
+    category: filters.category || null,
+    condition: filters.condition || null,
+    location: filters.location || null,
+    sort_by: filters.sort_by || 'newest',
+    alert_enabled: true,
+  };
+  if (filters.min_price !== '' && filters.min_price != null) {
+    payload.min_price = parseFloat(filters.min_price);
+  }
+  if (filters.max_price !== '' && filters.max_price != null) {
+    payload.max_price = parseFloat(filters.max_price);
+  }
+  return payload;
+}
+
+function describeSavedSearch(s) {
+  const parts = [];
+  if (s.search) parts.push(`"${s.search}"`);
+  if (s.category) parts.push(s.category);
+  if (s.location) parts.push(s.location);
+  if (s.condition) parts.push(s.condition);
+  if (s.min_price != null || s.max_price != null) {
+    const lo = s.min_price != null ? formatPrice(s.min_price) : '₹0';
+    const hi = s.max_price != null ? formatPrice(s.max_price) : 'any';
+    parts.push(`${lo} – ${hi}`);
+  }
+  return s.label || parts.join(' · ') || 'Saved search';
+}
+
+async function loadSavedSearchesPanel() {
+  const panel = document.getElementById('saved-searches-panel');
+  const list = document.getElementById('saved-searches-list');
+  if (!panel || !list) return;
+
+  if (!isLogged()) {
+    panel.hidden = true;
+    return;
+  }
+
+  try {
+    const searches = await api.savedSearches.list();
+    if (searches.length === 0) {
+      panel.hidden = true;
+      return;
+    }
+
+    panel.hidden = false;
+    list.innerHTML = searches.slice(0, 5).map((s) => `
+      <div class="saved-search-chip" data-id="${s.id}">
+        <div class="saved-search-chip-text">
+          <strong>${describeSavedSearch(s)}</strong>
+          <span>${s.alert_enabled ? 'Alerts on' : 'Alerts off'}</span>
+        </div>
+        <button type="button" class="saved-search-remove" data-id="${s.id}" aria-label="Remove alert">✕</button>
+      </div>
+    `).join('');
+
+    list.querySelectorAll('.saved-search-remove').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const id = btn.getAttribute('data-id');
+        try {
+          await api.savedSearches.remove(id);
+          showToast('Search alert removed', 'info');
+          loadSavedSearchesPanel();
+        } catch (err) {
+          showToast(err.message, 'error');
+        }
+      });
+    });
+  } catch {
+    panel.hidden = true;
+  }
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   updateNavbar();
   loadProducts();
   refreshWishlistState();
+  loadSavedSearchesPanel();
 
   // 3. Category chips event listeners
   const chips = document.querySelectorAll('.category-chip');
@@ -74,12 +164,40 @@ document.addEventListener('DOMContentLoaded', () => {
   const applyBtn = document.getElementById('apply-filters-btn');
   if (applyBtn) {
     applyBtn.addEventListener('click', () => {
-      currentFilters.location = document.getElementById('filter-location').value;
-      currentFilters.condition = document.getElementById('filter-condition').value;
-      currentFilters.min_price = document.getElementById('filter-min-price').value;
-      currentFilters.max_price = document.getElementById('filter-max-price').value;
-      currentFilters.sort_by = document.getElementById('filter-sort').value;
+      const f = getFiltersFromUI();
+      Object.assign(currentFilters, f);
       loadProducts();
+    });
+  }
+
+  const saveSearchBtn = document.getElementById('save-search-btn');
+  if (saveSearchBtn) {
+    saveSearchBtn.addEventListener('click', async () => {
+      if (!isLogged()) {
+        showToast('Sign in to save search alerts', 'info');
+        setTimeout(() => { window.location.href = 'login.html'; }, 1000);
+        return;
+      }
+
+      const f = getFiltersFromUI();
+      Object.assign(currentFilters, f);
+
+      const hasFilter = f.search || f.category || f.condition || f.location || f.min_price || f.max_price;
+      if (!hasFilter) {
+        showToast('Apply at least one filter before saving an alert.', 'info');
+        return;
+      }
+
+      saveSearchBtn.disabled = true;
+      try {
+        await api.savedSearches.create(buildSavedSearchPayload(f));
+        showToast('Search alert saved! We’ll notify you about new matches.', 'success');
+        loadSavedSearchesPanel();
+      } catch (err) {
+        showToast(err.message, 'error');
+      } finally {
+        saveSearchBtn.disabled = false;
+      }
     });
   }
 });
@@ -132,10 +250,13 @@ export async function loadProducts() {
       const dateStr = new Date(prod.created_at).toLocaleDateString([], { month: 'short', day: 'numeric' });
       const condClass = (prod.condition || 'Good').toLowerCase().replace(/\s+/g, '_');
 
+      const listingStatus = prod.status || 'active';
+
       return `
-        <div class="product-card glass-panel" data-id="${prod.id}">
+        <div class="product-card glass-panel ${listingStatus === 'sold' ? 'product-card-sold' : ''}" data-id="${prod.id}">
           <div class="card-image-wrapper">
             <span class="card-tag condition-${condClass}">${prod.condition}</span>
+            ${listingStatus !== 'active' ? `<span class="listing-status-badge status-${listingStatus}">${listingStatus}</span>` : ''}
             <button class="wishlist-btn ${isFav ? 'active' : ''}" data-product-id="${prod.id}" title="Save to Favorites">
               <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                 <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/>

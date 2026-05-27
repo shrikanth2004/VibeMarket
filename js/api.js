@@ -167,9 +167,20 @@ export const api = {
     
     getProfile: () => request('/auth/me', 'GET'),
     
-    updateProfile: async (fullName, avatarUrl) => {
-      const res = await request('/auth/profile', 'PUT', { full_name: fullName, avatar_url: avatarUrl });
+    updateProfile: async (fullName) => {
+      const res = await request('/auth/profile', 'PUT', { full_name: fullName });
       // Sync user storage
+      if (res.profile) {
+        const u = getCurrentUser() || {};
+        setCurrentUser({ ...u, ...res.profile });
+      }
+      return res;
+    },
+
+    uploadAvatar: async (file) => {
+      const formData = new FormData();
+      formData.append('avatar', file);
+      const res = await request('/auth/profile/avatar', 'POST', formData, true);
       if (res.profile) {
         const u = getCurrentUser() || {};
         setCurrentUser({ ...u, ...res.profile });
@@ -196,8 +207,17 @@ export const api = {
     create: (formData) => request('/products', 'POST', formData, true),
     
     update: (id, formData) => request(`/products/${id}`, 'PUT', formData, true),
+
+    updateStatus: (id, status) => request(`/products/${id}/status`, 'PATCH', { status }),
     
     delete: (id) => request(`/products/${id}`, 'DELETE')
+  },
+
+  savedSearches: {
+    list: () => request('/saved-searches', 'GET'),
+    create: (data) => request('/saved-searches', 'POST', data),
+    update: (id, data) => request(`/saved-searches/${id}`, 'PUT', data),
+    remove: (id) => request(`/saved-searches/${id}`, 'DELETE'),
   },
 
   // Wishlist / Favorites
@@ -229,6 +249,8 @@ export const api = {
 
   // Admin Dashboard
   admin: {
+    stats: () => request('/admin/stats', 'GET'),
+    listings: () => request('/admin/listings', 'GET'),
     users: () => request('/admin/users', 'GET'),
     updateRole: (userId, role) => request(`/admin/users/${userId}/role`, 'PUT', { role }),
     deleteListing: (productId) => request(`/admin/listings/${productId}`, 'DELETE')

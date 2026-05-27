@@ -1,9 +1,17 @@
 import uuid
 from fastapi import APIRouter, Depends, HTTPException, status, Form, File, UploadFile
+from pydantic import BaseModel
 from typing import List, Optional
 from api.supabase_client import supabase, supabase_admin
 from api.dependencies import get_current_user
-from api.config import CATEGORIES, CONDITIONS
+from api.config import CATEGORIES, CONDITIONS, LISTING_STATUSES
+from api.search_alerts import notify_saved_search_matches, notify_wishlist_item_sold
+from api.db_features import (
+    apply_listing_status_filter,
+    get_product_status,
+    has_listing_status_column,
+    MIGRATION_HINT,
+)
 from api.storage_utils import (
     upload_product_image,
     extract_storage_path,
@@ -14,6 +22,11 @@ from api.storage_utils import (
 
 router = APIRouter(prefix="/products", tags=["products"])
 
+
+class StatusUpdateRequest(BaseModel):
+    status: str
+
+
 @router.get("")
 async def get_products(
     search: Optional[str] = None,
@@ -23,11 +36,22 @@ async def get_products(
     max_price: Optional[float] = None,
     location: Optional[str] = None,
     seller_id: Optional[str] = None,
+    status: Optional[str] = None,
     sort_by: Optional[str] = "newest" # newest, price_asc, price_desc
 ):
     try:
         # Build query
         query = supabase_admin.table("products").select("*, profiles(full_name, avatar_url)").eq("is_approved", True)
+
+        # Marketplace browse: active only; seller dashboard: all statuses unless filtered
+        if seller_id:
+            query = query.eq("seller_id", seller_id)
+            if status:
+                if status not in LISTING_STATUSES:
+                    raise HTTPException(status_code=400, detail="Invalid status.")
+                query = apply_listing_status_filter(query, status)
+        else:
+            query = apply_listing_status_filter(query, status if status else "active")
         
         # Apply filters
         if category:
@@ -40,8 +64,6 @@ async def get_products(
             query = query.lte("price", max_price)
         if location:
             query = query.ilike("location", f"%{location}%")
-        if seller_id:
-            query = query.eq("seller_id", seller_id)
         if search:
             # Simple text search on title or description
             query = query.or_(f"title.ilike.%{search}%,description.ilike.%{search}%")
@@ -149,11 +171,15 @@ async def create_product(
             "condition": condition,
             "location": location,
             "images": image_urls,
-            "is_approved": True
+            "is_approved": True,
         }
-        
+        if has_listing_status_column():
+            product_data["status"] = "active"
+
         res = supabase_admin.table("products").insert(product_data).execute()
-        return resolve_product_images(res.data[0])
+        created = res.data[0]
+        notify_saved_search_matches(created)
+        return resolve_product_images(created)
     except Exception as e:
         # Clean up uploaded files on error
         try:
@@ -264,6 +290,45 @@ async def update_product(
         raise
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+@router.patch("/{id}/status")
+async def update_listing_status(
+    id: str,
+    body: StatusUpdateRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    if body.status not in LISTING_STATUSES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid status. Must be one of {LISTING_STATUSES}",
+        )
+    if not has_listing_status_column():
+        raise HTTPException(
+            status_code=503,
+            detail=f"Listing status is not available yet. {MIGRATION_HINT}",
+        )
+    try:
+        prod_res = supabase_admin.table("products").select("*").eq("id", id).execute()
+        if not prod_res.data:
+            raise HTTPException(status_code=404, detail="Product not found.")
+
+        product = prod_res.data[0]
+        if product["seller_id"] != current_user["id"] and current_user["role"] != "admin":
+            raise HTTPException(status_code=403, detail="Forbidden.")
+
+        previous_status = get_product_status(product)
+        res = supabase_admin.table("products").update({"status": body.status}).eq("id", id).execute()
+        updated = res.data[0]
+
+        if body.status == "sold" and previous_status != "sold":
+            notify_wishlist_item_sold(updated)
+
+        return resolve_product_images(updated)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
 
 @router.delete("/{id}")
 async def delete_product(id: str, current_user: dict = Depends(get_current_user)):

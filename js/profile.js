@@ -1,10 +1,26 @@
 import { api, getCurrentUser, showToast, formatPrice } from './api.js';
-import { isLogged } from './auth.js';
+import { isLogged, updateNavbar } from './auth.js';
 
 // Global state for uploaded files
 let selectedFiles = [];
 // Global state for existing images (when editing a product)
 let existingImageUrls = [];
+
+const FALLBACK_AVATAR = 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=80&q=80';
+const AVATAR_EXPORT_SIZE = 400;
+const AVATAR_CROP_SIZE = 280;
+
+const avatarCropState = {
+  image: null,
+  scale: 1,
+  offsetX: 0,
+  offsetY: 0,
+  dragging: false,
+  dragStartX: 0,
+  dragStartY: 0,
+  startOffsetX: 0,
+  startOffsetY: 0,
+};
 
 document.addEventListener('DOMContentLoaded', () => {
   // 1. Auth Guard redirect
@@ -23,12 +39,15 @@ document.addEventListener('DOMContentLoaded', () => {
   // 4. Load Tab Contents
   loadUserListings();
   loadUserFavorites();
+  loadProfileSavedSearches();
 
   // 5. Profile Edit form submission
   const editProfileForm = document.getElementById('edit-profile-form');
   if (editProfileForm) {
     editProfileForm.addEventListener('submit', handleProfileUpdate);
   }
+
+  setupAvatarUpload();
 
   // 6. Uploader Drag & Drop setup
   setupDragAndDrop();
@@ -80,48 +99,334 @@ function setupDashboardTabs() {
 async function loadProfileData() {
   try {
     const profile = await api.auth.getProfile();
-    const fallbackAvatar = 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=80&q=80';
+    const avatarUrl = profile.avatar_url || FALLBACK_AVATAR;
 
     // Update Sidebar
     const avatarImg = document.getElementById('sidebar-avatar');
     const nameLabel = document.getElementById('sidebar-name');
     const roleLabel = document.getElementById('sidebar-role');
 
-    if (avatarImg) avatarImg.src = profile.avatar_url || fallbackAvatar;
+    if (avatarImg) avatarImg.src = avatarUrl;
     if (nameLabel) nameLabel.innerText = profile.full_name;
     if (roleLabel) roleLabel.innerText = profile.role;
 
     // Populate inputs in Edit Form
     const nameInput = document.getElementById('profile-name');
-    const avatarInput = document.getElementById('profile-avatar-url');
+    const previewImg = document.getElementById('profile-avatar-preview');
 
     if (nameInput) nameInput.value = profile.full_name;
-    if (avatarInput) avatarInput.value = profile.avatar_url || '';
+    if (previewImg) previewImg.src = avatarUrl;
 
   } catch (err) {
     console.error('Failed to load profile settings:', err);
   }
 }
 
+function setupAvatarUpload() {
+  const fileInput = document.getElementById('profile-avatar-file');
+  const pickBtn = document.getElementById('profile-avatar-pick-btn');
+  const previewImg = document.getElementById('profile-avatar-preview');
+  const modal = document.getElementById('avatar-crop-modal');
+  const canvas = document.getElementById('avatar-crop-canvas');
+  const zoomInput = document.getElementById('avatar-crop-zoom');
+  const saveBtn = document.getElementById('avatar-crop-save');
+  const cancelBtn = document.getElementById('avatar-crop-cancel');
+  const backdrop = document.getElementById('avatar-crop-backdrop');
+
+  if (!fileInput || !pickBtn || !modal || !canvas || !zoomInput || !saveBtn || !cancelBtn) return;
+
+  const openPicker = () => fileInput.click();
+
+  pickBtn.addEventListener('click', openPicker);
+  if (previewImg) previewImg.addEventListener('click', openPicker);
+
+  fileInput.addEventListener('change', (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      showToast('Please choose an image file from your gallery.', 'error');
+      return;
+    }
+
+    if (file.size > 10 * 1024 * 1024) {
+      showToast('Image must be 10 MB or smaller.', 'error');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const img = new Image();
+      img.onload = () => {
+        avatarCropState.image = img;
+        avatarCropState.scale = 1;
+        avatarCropState.offsetX = 0;
+        avatarCropState.offsetY = 0;
+        zoomInput.value = '1';
+        drawAvatarCropPreview(canvas);
+        modal.classList.add('active');
+        modal.setAttribute('aria-hidden', 'false');
+      };
+      img.src = event.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+
+  zoomInput.addEventListener('input', () => {
+    avatarCropState.scale = parseFloat(zoomInput.value) || 1;
+    drawAvatarCropPreview(canvas);
+  });
+
+  const startDrag = (clientX, clientY) => {
+    avatarCropState.dragging = true;
+    avatarCropState.dragStartX = clientX;
+    avatarCropState.dragStartY = clientY;
+    avatarCropState.startOffsetX = avatarCropState.offsetX;
+    avatarCropState.startOffsetY = avatarCropState.offsetY;
+  };
+
+  const moveDrag = (clientX, clientY) => {
+    if (!avatarCropState.dragging) return;
+    avatarCropState.offsetX = avatarCropState.startOffsetX + (clientX - avatarCropState.dragStartX);
+    avatarCropState.offsetY = avatarCropState.startOffsetY + (clientY - avatarCropState.dragStartY);
+    drawAvatarCropPreview(canvas);
+  };
+
+  const endDrag = () => {
+    avatarCropState.dragging = false;
+  };
+
+  canvas.addEventListener('mousedown', (e) => {
+    e.preventDefault();
+    startDrag(e.clientX, e.clientY);
+  });
+
+  window.addEventListener('mousemove', (e) => moveDrag(e.clientX, e.clientY));
+  window.addEventListener('mouseup', endDrag);
+
+  canvas.addEventListener('touchstart', (e) => {
+    if (!e.touches[0]) return;
+    e.preventDefault();
+    startDrag(e.touches[0].clientX, e.touches[0].clientY);
+  }, { passive: false });
+
+  canvas.addEventListener('touchmove', (e) => {
+    if (!e.touches[0]) return;
+    e.preventDefault();
+    moveDrag(e.touches[0].clientX, e.touches[0].clientY);
+  }, { passive: false });
+
+  canvas.addEventListener('touchend', endDrag);
+
+  const closeModal = () => {
+    modal.classList.remove('active');
+    modal.setAttribute('aria-hidden', 'true');
+    avatarCropState.image = null;
+    endDrag();
+  };
+
+  cancelBtn.addEventListener('click', closeModal);
+  backdrop.addEventListener('click', closeModal);
+
+  saveBtn.addEventListener('click', async () => {
+    if (!avatarCropState.image) return;
+
+    saveBtn.disabled = true;
+    saveBtn.innerText = 'Saving...';
+
+    try {
+      const blob = await exportCroppedAvatarBlob();
+      await api.auth.uploadAvatar(blob);
+      showToast('Profile photo updated!', 'success');
+      await loadProfileData();
+      await updateNavbar();
+      closeModal();
+    } catch (err) {
+      showToast('Upload failed: ' + err.message, 'error');
+    } finally {
+      saveBtn.disabled = false;
+      saveBtn.innerText = 'Save photo';
+    }
+  });
+}
+
+function getAvatarCropMetrics(size) {
+  const img = avatarCropState.image;
+  if (!img) return null;
+
+  const baseScale = Math.max(size / img.width, size / img.height);
+  const scale = baseScale * avatarCropState.scale;
+  const drawWidth = img.width * scale;
+  const drawHeight = img.height * scale;
+  const x = (size - drawWidth) / 2 + avatarCropState.offsetX;
+  const y = (size - drawHeight) / 2 + avatarCropState.offsetY;
+
+  return { x, y, drawWidth, drawHeight };
+}
+
+function drawAvatarCropPreview(canvas) {
+  const ctx = canvas.getContext('2d');
+  const size = canvas.width;
+  const img = avatarCropState.image;
+  if (!ctx || !img) return;
+
+  const metrics = getAvatarCropMetrics(size);
+  if (!metrics) return;
+
+  ctx.clearRect(0, 0, size, size);
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(size / 2, size / 2, size / 2, 0, Math.PI * 2);
+  ctx.closePath();
+  ctx.clip();
+  ctx.drawImage(img, metrics.x, metrics.y, metrics.drawWidth, metrics.drawHeight);
+  ctx.restore();
+
+  ctx.save();
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.85)';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.arc(size / 2, size / 2, size / 2 - 1, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.restore();
+}
+
+function exportCroppedAvatarBlob() {
+  return new Promise((resolve, reject) => {
+    const canvas = document.createElement('canvas');
+    canvas.width = AVATAR_EXPORT_SIZE;
+    canvas.height = AVATAR_EXPORT_SIZE;
+    const ctx = canvas.getContext('2d');
+    const metrics = getAvatarCropMetrics(AVATAR_CROP_SIZE);
+
+    if (!ctx || !avatarCropState.image || !metrics) {
+      reject(new Error('Could not prepare cropped image.'));
+      return;
+    }
+
+    const scaleFactor = AVATAR_EXPORT_SIZE / AVATAR_CROP_SIZE;
+
+    ctx.beginPath();
+    ctx.arc(AVATAR_EXPORT_SIZE / 2, AVATAR_EXPORT_SIZE / 2, AVATAR_EXPORT_SIZE / 2, 0, Math.PI * 2);
+    ctx.closePath();
+    ctx.clip();
+
+    ctx.drawImage(
+      avatarCropState.image,
+      metrics.x * scaleFactor,
+      metrics.y * scaleFactor,
+      metrics.drawWidth * scaleFactor,
+      metrics.drawHeight * scaleFactor
+    );
+
+    canvas.toBlob(
+      (blob) => {
+        if (!blob) {
+          reject(new Error('Could not create image file.'));
+          return;
+        }
+        resolve(blob);
+      },
+      'image/jpeg',
+      0.92
+    );
+  });
+}
+
 // Save profile update form details
 async function handleProfileUpdate(e) {
   e.preventDefault();
-  const name = document.getElementById('profile-name').value;
-  const avatar = document.getElementById('profile-avatar-url').value;
+  const name = document.getElementById('profile-name').value.trim();
   const submitBtn = e.target.querySelector('button[type="submit"]');
 
   submitBtn.disabled = true;
   submitBtn.innerText = 'Updating Profile...';
 
   try {
-    await api.auth.updateProfile(name, avatar || null);
+    await api.auth.updateProfile(name);
     showToast('Profile updated successfully!', 'success');
-    await loadProfileData(); // Reload UI
+    await loadProfileData();
+    await updateNavbar();
   } catch (err) {
     showToast('Update failed: ' + err.message, 'error');
   } finally {
     submitBtn.disabled = false;
     submitBtn.innerText = 'Save Profile Updates';
+  }
+}
+
+function describeSavedSearchRow(s) {
+  const parts = [];
+  if (s.search) parts.push(`"${s.search}"`);
+  if (s.category) parts.push(s.category);
+  if (s.location) parts.push(s.location);
+  if (s.condition) parts.push(s.condition);
+  if (s.min_price != null || s.max_price != null) {
+    parts.push(`${s.min_price != null ? formatPrice(s.min_price) : '₹0'} – ${s.max_price != null ? formatPrice(s.max_price) : 'any'}`);
+  }
+  return s.label || parts.join(' · ') || 'Saved search';
+}
+
+async function loadProfileSavedSearches() {
+  const container = document.getElementById('profile-saved-searches-list');
+  if (!container) return;
+
+  try {
+    const searches = await api.savedSearches.list();
+
+    if (searches.length === 0) {
+      container.innerHTML = `
+        <p style="color: var(--text-muted); text-align: center; padding: 32px 0;">
+          No alerts yet. On the home page, set filters and tap <strong>Save Search Alert</strong>.
+        </p>`;
+      return;
+    }
+
+    container.innerHTML = searches.map((s) => `
+      <div class="saved-search-row glass-panel">
+        <div class="saved-search-row-body">
+          <strong>${describeSavedSearchRow(s)}</strong>
+          <span class="saved-search-meta">${s.alert_enabled ? '🔔 Alerts enabled' : 'Alerts paused'}</span>
+        </div>
+        <div class="saved-search-row-actions">
+          <button type="button" class="action-btn edit toggle-alert-btn" data-id="${s.id}" data-enabled="${s.alert_enabled}">
+            ${s.alert_enabled ? 'Pause' : 'Enable'}
+          </button>
+          <button type="button" class="action-btn delete remove-alert-btn" data-id="${s.id}">Remove</button>
+        </div>
+      </div>
+    `).join('');
+
+    container.querySelectorAll('.toggle-alert-btn').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const id = btn.getAttribute('data-id');
+        const enabled = btn.getAttribute('data-enabled') === 'true';
+        try {
+          await api.savedSearches.update(id, { alert_enabled: !enabled });
+          showToast(enabled ? 'Alerts paused' : 'Alerts enabled', 'success');
+          loadProfileSavedSearches();
+        } catch (e) {
+          showToast(e.message, 'error');
+        }
+      });
+    });
+
+    container.querySelectorAll('.remove-alert-btn').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const id = btn.getAttribute('data-id');
+        if (!confirm('Remove this search alert?')) return;
+        try {
+          await api.savedSearches.remove(id);
+          showToast('Alert removed', 'info');
+          loadProfileSavedSearches();
+        } catch (e) {
+          showToast(e.message, 'error');
+        }
+      });
+    });
+  } catch (error) {
+    container.innerHTML = `<p style="color: var(--accent-rose); text-align: center;">${error.message}</p>`;
   }
 }
 
@@ -144,18 +449,25 @@ async function loadUserListings() {
     container.innerHTML = listings.map(prod => {
       const thumbnail = prod.images && prod.images.length > 0 ? prod.images[0] : 'https://images.unsplash.com/photo-1531403009284-440f080d1e12?auto=format&fit=crop&w=600&q=80';
       const formattedPrice = formatPrice(prod.price);
-      
+      const status = prod.status || 'active';
+      const statusLabel = { active: 'Active', sold: 'Sold', reserved: 'Reserved', draft: 'Draft' }[status] || status;
+
       return `
-        <div class="user-listing-item" data-id="${prod.id}">
+        <div class="user-listing-item ${status === 'sold' ? 'user-listing-sold' : ''}" data-id="${prod.id}">
           <img src="${thumbnail}" alt="${prod.title}" class="user-listing-thumb">
           <div class="user-listing-details">
             <div class="user-listing-title">${prod.title}</div>
-            <div style="font-size: 12px; color: var(--text-secondary); margin-top: 2px;">Category: ${prod.category} | Condition: ${prod.condition}</div>
+            <div style="font-size: 12px; color: var(--text-secondary); margin-top: 2px;">
+              ${prod.category} · ${prod.condition}
+              <span class="listing-status-badge status-${status}" style="margin-left: 6px;">${statusLabel}</span>
+            </div>
             <div class="user-listing-price" style="margin-top: 4px;">${formattedPrice}</div>
           </div>
           <div class="user-listing-actions">
-            <button class="action-btn edit" data-id="${prod.id}" title="Edit Listing">Edit</button>
-            <button class="action-btn delete" data-id="${prod.id}" title="Delete Listing">Delete</button>
+            ${status === 'active' ? `<button class="action-btn mark-sold-btn" data-id="${prod.id}" type="button">Mark Sold</button>` : ''}
+            ${status === 'sold' ? `<button class="action-btn edit relist-btn" data-id="${prod.id}" type="button">Relist</button>` : ''}
+            <button class="action-btn edit" data-id="${prod.id}" title="Edit Listing" type="button">Edit</button>
+            <button class="action-btn delete" data-id="${prod.id}" title="Delete Listing" type="button">Delete</button>
           </div>
         </div>
       `;
@@ -177,10 +489,37 @@ async function loadUserListings() {
       });
     });
 
-    container.querySelectorAll('.action-btn.edit').forEach(btn => {
+    container.querySelectorAll('.action-btn.edit:not(.relist-btn)').forEach(btn => {
       btn.addEventListener('click', async () => {
         const id = btn.getAttribute('data-id');
         await enterEditMode(id);
+      });
+    });
+
+    container.querySelectorAll('.mark-sold-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const id = btn.getAttribute('data-id');
+        if (!confirm('Mark this listing as sold? Wishlist users will be notified.')) return;
+        try {
+          await api.products.updateStatus(id, 'sold');
+          showToast('Listing marked as sold', 'success');
+          loadUserListings();
+        } catch (e) {
+          showToast(e.message, 'error');
+        }
+      });
+    });
+
+    container.querySelectorAll('.relist-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const id = btn.getAttribute('data-id');
+        try {
+          await api.products.updateStatus(id, 'active');
+          showToast('Listing is active again', 'success');
+          loadUserListings();
+        } catch (e) {
+          showToast(e.message, 'error');
+        }
       });
     });
 

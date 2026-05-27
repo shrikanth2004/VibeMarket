@@ -8,7 +8,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 
 # Import all routers from api/routes
-from api.routes import auth, products, wishlist, reviews, comments, notifications, admin
+from api.routes import auth, products, wishlist, reviews, comments, notifications, admin, saved_searches
 
 # Initialize FastAPI App
 app = FastAPI(
@@ -34,6 +34,7 @@ app.include_router(reviews.router, prefix="/api")
 app.include_router(comments.router, prefix="/api")
 app.include_router(notifications.router, prefix="/api")
 app.include_router(admin.router, prefix="/api")
+app.include_router(saved_searches.router, prefix="/api")
 
 # 2. Serve Frontend static assets
 # Mount CSS and JS folders

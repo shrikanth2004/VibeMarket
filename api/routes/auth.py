@@ -1,8 +1,9 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
 from pydantic import BaseModel, EmailStr, Field
 from typing import Optional
 from api.supabase_client import supabase, supabase_admin
 from api.dependencies import get_current_user
+from api.storage_utils import upload_avatar_image, resolve_profile_avatar
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -104,7 +105,41 @@ async def update_profile(body: ProfileUpdateRequest, current_user: dict = Depend
             raise HTTPException(status_code=404, detail="Profile not found.")
         return {
             "message": "Profile updated successfully.",
-            "profile": res.data[0]
+            "profile": resolve_profile_avatar(res.data[0])
         }
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/profile/avatar")
+async def upload_profile_avatar(
+    avatar: UploadFile = File(...),
+    current_user: dict = Depends(get_current_user),
+):
+    if not avatar.content_type or not avatar.content_type.startswith("image/"):
+        raise HTTPException(status_code=400, detail="Only image files are allowed.")
+
+    try:
+        file_bytes = await avatar.read()
+        if not file_bytes:
+            raise HTTPException(status_code=400, detail="Empty image file.")
+
+        if len(file_bytes) > 5 * 1024 * 1024:
+            raise HTTPException(status_code=400, detail="Image must be 5 MB or smaller.")
+
+        avatar_path = upload_avatar_image(current_user["id"], file_bytes, avatar.content_type)
+        res = supabase_admin.table("profiles").update({"avatar_url": avatar_path}).eq(
+            "id", current_user["id"]
+        ).execute()
+
+        if not res.data:
+            raise HTTPException(status_code=404, detail="Profile not found.")
+
+        return {
+            "message": "Profile photo updated successfully.",
+            "profile": resolve_profile_avatar(res.data[0]),
+        }
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))

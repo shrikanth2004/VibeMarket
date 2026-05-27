@@ -11,7 +11,6 @@
 </head>
 <body>
 
-  <!-- Header -->
   <header>
     <div class="container navbar">
       <div class="logo-container">
@@ -19,38 +18,69 @@
           VibeMarket <span>ADMIN</span>
         </a>
       </div>
-
-      <!-- Links -->
       <a href="index.html" class="back-link">Back to Marketplace</a>
-
-      <!-- Actions -->
-      <div class="nav-actions" id="nav-actions-container">
-        <!-- populated dynamically -->
-      </div>
+      <div class="nav-actions" id="nav-actions-container"></div>
     </div>
   </header>
 
-  <!-- Admin Main Panel -->
   <main class="container admin-main">
     
     <div class="admin-page-header">
       <h1 class="admin-page-title">Admin Dashboard</h1>
-      <p>Marketplace moderation & user role control console.</p>
+      <p>Marketplace analytics, moderation & user role control.</p>
     </div>
 
-    <div class="admin-stats-grid">
+    <div class="admin-migration-banner" id="admin-migration-banner" hidden role="alert">
+      <strong>Database setup required</strong>
+      <p id="admin-migration-message">Run <code>migrations/add_features.sql</code> in Supabase → SQL Editor to enable sold listings, search alerts, and full stats.</p>
+    </div>
+
+    <div class="admin-stats-grid admin-stats-grid-extended">
       <div class="glass-panel admin-stat-card">
         <h3>Total Users</h3>
-        <p style="color: var(--accent-cyan);" id="stat-total-users">0</p>
+        <p class="admin-stat-value" style="color: var(--accent-cyan);" id="stat-total-users">0</p>
+        <span class="admin-stat-sub" id="stat-new-users-7d">+0 this week</span>
       </div>
       <div class="glass-panel admin-stat-card">
         <h3>Active Listings</h3>
-        <p style="color: var(--accent-indigo);" id="stat-total-listings">0</p>
+        <p class="admin-stat-value" style="color: var(--accent-indigo);" id="stat-active-listings">0</p>
+        <span class="admin-stat-sub" id="stat-new-listings-7d">+0 this week</span>
       </div>
       <div class="glass-panel admin-stat-card">
-        <h3>Average Pricing</h3>
-        <p id="stat-avg-price">₹0</p>
+        <h3>Sold Listings</h3>
+        <p class="admin-stat-value" style="color: var(--brand-coral);" id="stat-sold-listings">0</p>
+        <span class="admin-stat-sub" id="stat-total-listings-sub">0 total</span>
       </div>
+      <div class="glass-panel admin-stat-card">
+        <h3>Average Price</h3>
+        <p class="admin-stat-value" id="stat-avg-price">₹0</p>
+        <span class="admin-stat-sub">Across all listings</span>
+      </div>
+      <div class="glass-panel admin-stat-card">
+        <h3>Reviews</h3>
+        <p class="admin-stat-value" id="stat-total-reviews">0</p>
+        <span class="admin-stat-sub">Platform-wide</span>
+      </div>
+      <div class="glass-panel admin-stat-card">
+        <h3>Wishlist Saves</h3>
+        <p class="admin-stat-value" id="stat-total-wishlists">0</p>
+        <span class="admin-stat-sub">Favorites count</span>
+      </div>
+    </div>
+
+    <div class="admin-charts-grid">
+      <section class="glass-panel admin-chart-panel">
+        <h2>Listings by category</h2>
+        <div id="chart-category-bars" class="admin-bar-chart"></div>
+      </section>
+      <section class="glass-panel admin-chart-panel">
+        <h2>New listings (7 days)</h2>
+        <div id="chart-listings-trend" class="admin-trend-chart"></div>
+      </section>
+      <section class="glass-panel admin-chart-panel">
+        <h2>New users (7 days)</h2>
+        <div id="chart-users-trend" class="admin-trend-chart"></div>
+      </section>
     </div>
 
     <div class="admin-tabs">
@@ -58,47 +88,44 @@
       <button class="category-chip" id="btn-admin-users">Manage Users</button>
     </div>
 
-    <!-- Listings Tab Section -->
-    <section id="sec-admin-listings" class="glass-panel" style="padding: 24px;">
-      <h2 style="font-size: 20px; margin-bottom: 20px;">All Marketplace Listings</h2>
+    <section id="sec-admin-listings" class="glass-panel admin-table-section">
+      <h2>All Marketplace Listings</h2>
       <div class="admin-table-wrapper">
         <table class="admin-table">
           <thead>
             <tr>
               <th>Item details</th>
               <th>Category</th>
-              <th>Seller ID</th>
+              <th>Status</th>
+              <th>Seller</th>
               <th>Price</th>
-              <th>Posted Date</th>
+              <th>Posted</th>
               <th>Action</th>
             </tr>
           </thead>
           <tbody id="admin-listings-table-body">
-            <!-- Dynamically populated -->
             <tr>
-              <td colspan="6" style="text-align: center; color: var(--text-muted); padding: 40px 0;">Loading listings...</td>
+              <td colspan="7" style="text-align: center; color: var(--text-muted); padding: 40px 0;">Loading listings...</td>
             </tr>
           </tbody>
         </table>
       </div>
     </section>
 
-    <!-- Users Tab Section (Hidden by default) -->
-    <section id="sec-admin-users" class="glass-panel" style="padding: 24px; display: none;">
-      <h2 style="font-size: 20px; margin-bottom: 20px;">Platform Registered Users</h2>
+    <section id="sec-admin-users" class="glass-panel admin-table-section" style="display: none;">
+      <h2>Platform Registered Users</h2>
       <div class="admin-table-wrapper">
         <table class="admin-table">
           <thead>
             <tr>
               <th>Full Name</th>
               <th>User ID</th>
-              <th>Assigned Role</th>
-              <th>Joined Date</th>
-              <th>Moderation Actions</th>
+              <th>Role</th>
+              <th>Joined</th>
+              <th>Actions</th>
             </tr>
           </thead>
           <tbody id="admin-users-table-body">
-            <!-- Dynamically populated -->
             <tr>
               <td colspan="5" style="text-align: center; color: var(--text-muted); padding: 40px 0;">Loading profiles...</td>
             </tr>

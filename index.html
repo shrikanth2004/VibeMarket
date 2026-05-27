@@ -111,9 +111,19 @@
         </select>
       </div>
 
-      <div>
-        <button id="apply-filters-btn" class="filter-btn form-submit-btn" style="margin-top: 0; padding: 11px;">Apply Filters</button>
+      <div class="filter-actions-col">
+        <button type="button" id="apply-filters-btn" class="filter-btn form-submit-btn">Apply Filters</button>
+        <button type="button" id="save-search-btn" class="filter-btn form-submit-btn secondary" title="Get notified when new listings match these filters">Save Search Alert</button>
       </div>
+    </section>
+
+    <!-- Saved search alerts (logged-in users) -->
+    <section class="saved-searches-panel glass-panel" id="saved-searches-panel" hidden>
+      <div class="section-header" style="margin-bottom: var(--space-md);">
+        <h2>Your search alerts</h2>
+        <a href="profile.html?tab=saved-searches" class="hero-link" style="color: var(--brand-orange); font-size: 0.875rem;">Manage all</a>
+      </div>
+      <div id="saved-searches-list" class="saved-searches-list"></div>
     </section>
 
     <!-- Listings Grid -->

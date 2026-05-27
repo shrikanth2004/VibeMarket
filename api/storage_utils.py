@@ -54,6 +54,28 @@ def upload_product_image(file_path: str, file_bytes: bytes, content_type: str) -
     return file_path
 
 
+def upload_avatar_image(user_id: str, file_bytes: bytes, content_type: str) -> str:
+    """Upload profile avatar; returns bucket-relative path for DB storage."""
+    ext = "jpg"
+    if content_type == "image/png":
+        ext = "png"
+    elif content_type == "image/webp":
+        ext = "webp"
+    file_path = f"avatars/{user_id}/avatar.{ext}"
+    upload_product_image(file_path, file_bytes, content_type or "image/jpeg")
+    return file_path
+
+
+def resolve_profile_avatar(profile: Optional[dict]) -> Optional[dict]:
+    """Sign storage avatar paths for browser display."""
+    if not profile:
+        return profile
+    avatar = profile.get("avatar_url")
+    if avatar:
+        profile = {**profile, "avatar_url": get_accessible_image_url(avatar)}
+    return profile
+
+
 def resolve_product_images(product: dict) -> dict:
     if not product:
         return product

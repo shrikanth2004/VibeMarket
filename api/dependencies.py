@@ -2,6 +2,7 @@ from fastapi import Depends, HTTPException, Security
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from api.supabase_client import supabase, supabase_admin
 from api.config import ADMIN_EMAILS
+from api.storage_utils import resolve_profile_avatar
 
 security = HTTPBearer()
 
@@ -43,7 +44,7 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Security(
                     profile = update_resp.data[0]
 
         # Return a merged dictionary of auth user details and db profile
-        return {
+        merged = {
             "id": user.id,
             "email": user.email,
             "full_name": profile.get("full_name"),
@@ -51,6 +52,7 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Security(
             "role": profile.get("role", "user"),
             "created_at": profile.get("created_at")
         }
+        return resolve_profile_avatar(merged)
     except Exception as e:
         raise HTTPException(
             status_code=401,

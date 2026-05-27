@@ -64,6 +64,7 @@ create table public.products (
   location text not null,
   images text[] default '{}' not null,
   is_approved boolean default true not null,
+  status text not null default 'active' check (status in ('active', 'sold', 'reserved', 'draft')),
   created_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
 
@@ -181,5 +182,76 @@ create policy "Users can update their own notifications (mark as read)" on publi
 create policy "Anyone can insert notifications (to notify product owners)" on public.notifications
   for insert with check (true);
 
+-- 7. Saved Searches (filters + price alerts)
+create table public.saved_searches (
+  id uuid default gen_random_uuid() primary key,
+  user_id uuid references public.profiles(id) on delete cascade not null,
+  label text,
+  search text,
+  category text,
+  condition text,
+  min_price numeric(12, 2),
+  max_price numeric(12, 2),
+  location text,
+  sort_by text default 'newest',
+  alert_enabled boolean default true not null,
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null
+);
+
+alter table public.saved_searches enable row level security;
+
+create policy "Users can view own saved searches" on public.saved_searches
+  for select using (auth.uid() = user_id);
+
+create policy "Users can insert own saved searches" on public.saved_searches
+  for insert with check (auth.uid() = user_id);
+
+create policy "Users can update own saved searches" on public.saved_searches
+  for update using (auth.uid() = user_id);
+
+create policy "Users can delete own saved searches" on public.saved_searches
+  for delete using (auth.uid() = user_id);
+
 -- Storage: In Supabase Dashboard → Storage, create a bucket named `product-images`.
 -- It can remain private; the API serves signed URLs to the frontend.
+
+
+-- Run this in Supabase SQL Editor (adds listing status + saved searches)
+
+-- 1. Listing status (active, sold, reserved, draft)
+alter table public.products
+  add column if not exists status text not null default 'active'
+  check (status in ('active', 'sold', 'reserved', 'draft'));
+
+create index if not exists products_status_idx on public.products (status);
+
+-- 2. Saved searches & price alerts
+create table if not exists public.saved_searches (
+  id uuid default gen_random_uuid() primary key,
+  user_id uuid references public.profiles(id) on delete cascade not null,
+  label text,
+  search text,
+  category text,
+  condition text,
+  min_price numeric(12, 2),
+  max_price numeric(12, 2),
+  location text,
+  sort_by text default 'newest',
+  alert_enabled boolean default true not null,
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null
+);
+
+alter table public.saved_searches enable row level security;
+
+create policy "Users can view own saved searches" on public.saved_searches
+  for select using (auth.uid() = user_id);
+
+create policy "Users can insert own saved searches" on public.saved_searches
+  for insert with check (auth.uid() = user_id);
+
+create policy "Users can update own saved searches" on public.saved_searches
+  for update using (auth.uid() = user_id);
+
+create policy "Users can delete own saved searches" on public.saved_searches
+  for delete using (auth.uid() = user_id);
+

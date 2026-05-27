@@ -28,3 +28,10 @@ CONDITIONS = [
     "Good",
     "Fair"
 ]
+
+LISTING_STATUSES = [
+    "active",
+    "sold",
+    "reserved",
+    "draft",
+]

@@ -79,6 +79,12 @@ async function loadProductDetails() {
     const formattedPrice = formatPrice(prod.price);
     const dateStr = new Date(prod.created_at).toLocaleDateString([], { month: 'long', day: 'numeric', year: 'numeric' });
     const seller = prod.profiles || { full_name: 'Unknown Seller', avatar_url: '' };
+    const listingStatus = prod.status || 'active';
+    const soldBanner = listingStatus === 'sold'
+      ? '<div class="product-sold-banner" role="status">This item has been sold</div>'
+      : listingStatus === 'reserved'
+        ? '<div class="product-sold-banner product-reserved-banner" role="status">Reserved by a buyer</div>'
+        : '';
     
     // Check if item is wishlisted by current user
     let isFav = false;
@@ -139,6 +145,7 @@ async function loadProductDetails() {
         
         <!-- Info Card -->
         <div class="glass-panel product-info-panel">
+          ${soldBanner}
           <div class="product-info-header">
             <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 16px;">
               <span class="card-category" style="font-size: 14px;">${prod.category}</span>
