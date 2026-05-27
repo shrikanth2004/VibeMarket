@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>VibeMarket - Premium Buy & Sell Marketplace</title>
+  <meta name="description" content="Browse, buy, and sell electronics, mobiles, furniture, fashion, and more on VibeMarket. Simple, fast, and secure.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700&family=Libre+Baskerville:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+
+  <!-- Header -->
+  <header>
+    <div class="container navbar">
+      <div class="logo-container">
+        <a href="index.html" class="logo">
+          VibeMarket
+        </a>
+      </div>
+
+      <!-- Search -->
+      <div class="nav-search">
+        <input type="text" id="global-search" placeholder="Search for anything">
+        <button type="button" class="nav-search-btn" id="global-search-btn" aria-label="Search">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.602 10.602Z" />
+          </svg>
+        </button>
+      </div>
+
+      <!-- Nav Actions -->
+      <div class="nav-actions" id="nav-actions-container">
+        <!-- Will be dynamically populated by JS based on login status -->
+        <a href="login.html" class="nav-btn secondary" id="login-nav-btn">Log In</a>
+        <a href="login.html?tab=signup" class="nav-btn primary" id="signup-nav-btn">Sign Up</a>
+      </div>
+    </div>
+  </header>
+
+  <!-- Categories Horizontal Navigation -->
+  <nav class="container">
+    <div class="categories-nav" id="categories-container">
+      <div class="category-chip active" data-category="">All Categories</div>
+      <div class="category-chip" data-category="Electronics">Electronics</div>
+      <div class="category-chip" data-category="Mobiles">Mobiles</div>
+      <div class="category-chip" data-category="Furniture">Furniture</div>
+      <div class="category-chip" data-category="Fashion">Fashion</div>
+      <div class="category-chip" data-category="Vehicles">Vehicles</div>
+      <div class="category-chip" data-category="Books">Books</div>
+      <div class="category-chip" data-category="Other">Other</div>
+    </div>
+  </nav>
+
+  <!-- Main Body -->
+  <main class="container">
+    
+    <!-- Hero promo banners -->
+    <section class="hero-promo">
+      <div class="hero-banner hero-banner-primary">
+        <div class="hero-banner-content">
+          <h1>Find What You Love, <span>Sell What You Don't</span></h1>
+          <p>Discover unique items near you — from mobiles to furniture, all in one marketplace.</p>
+          <a href="profile.html?tab=post-listing" class="hero-cta-btn">Start selling</a>
+        </div>
+        <div class="hero-banner-visual" aria-hidden="true"></div>
+      </div>
+      <div class="hero-banner hero-banner-secondary">
+        <div class="hero-banner-content">
+          <h2>Fresh picks for you</h2>
+          <p>Jump into featured categories and trending listings.</p>
+          <a href="#products-grid-container" class="hero-link">Shop now</a>
+        </div>
+      </div>
+    </section>
+
+    <!-- Advanced Filters -->
+    <section class="filter-section glass-panel">
+      <div class="filter-group">
+        <label for="filter-location">Location</label>
+        <input type="text" id="filter-location" class="filter-control" placeholder="Search by city/area...">
+      </div>
+
+      <div class="filter-group">
+        <label for="filter-condition">Condition</label>
+        <select id="filter-condition" class="filter-control">
+          <option value="">Any Condition</option>
+          <option value="New">New</option>
+          <option value="Like New">Like New</option>
+          <option value="Good">Good</option>
+          <option value="Fair">Fair</option>
+        </select>
+      </div>
+
+      <div class="filter-group">
+        <label>Price Range</label>
+        <div class="form-row" style="margin-bottom: 0; gap: 8px;">
+          <input type="number" id="filter-min-price" class="filter-control" placeholder="Min" min="0">
+          <input type="number" id="filter-max-price" class="filter-control" placeholder="Max" min="0">
+        </div>
+      </div>
+
+      <div class="filter-group">
+        <label for="filter-sort">Sort By</label>
+        <select id="filter-sort" class="filter-control">
+          <option value="newest">Newest First</option>
+          <option value="price_asc">Price: Low to High</option>
+          <option value="price_desc">Price: High to Low</option>
+        </select>
+      </div>
+
+      <div>
+        <button id="apply-filters-btn" class="filter-btn form-submit-btn" style="margin-top: 0; padding: 11px;">Apply Filters</button>
+      </div>
+    </section>
+
+    <!-- Listings Grid -->
+    <section class="marketplace-section">
+      <div class="section-header">
+        <h2 id="marketplace-heading">Jump into featured interests</h2>
+        <span id="product-count" class="product-count-label">Loading listings...</span>
+      </div>
+
+      <div class="products-grid" id="products-grid-container">
+        <!-- Spinner or skeleton will be shown here, then products -->
+        <div class="no-results" style="grid-column: 1 / -1; padding: 100px 0;">
+          <div class="loader" aria-hidden="true"></div>
+          <p>Loading listings...</p>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Footer -->
+  <footer class="site-footer">
+    <div class="container">
+      <div class="footer-grid">
+        <div class="footer-brand">
+          <a href="index.html" class="logo">VibeMarket</a>
+          <p>Buy and sell locally with confidence. Your trusted marketplace for electronics, vehicles, fashion, and more.</p>
+        </div>
+        <div class="footer-col">
+          <h4>Marketplace</h4>
+          <a href="index.html">Browse Listings</a>
+          <a href="profile.html?tab=post-listing">Sell an Item</a>
+          <a href="profile.html?tab=my-favorites">Saved Items</a>
+        </div>
+        <div class="footer-col">
+          <h4>Account</h4>
+          <a href="login.html">Sign In</a>
+          <a href="login.html?tab=signup">Create Account</a>
+          <a href="profile.html">My Dashboard</a>
+        </div>
+        <div class="footer-col">
+          <h4>Categories</h4>
+          <a href="index.html">Electronics</a>
+          <a href="index.html">Mobiles</a>
+          <a href="index.html">Vehicles</a>
+        </div>
+      </div>
+      <div class="footer-bottom">
+        <span>&copy; 2026 VibeMarket. All rights reserved.</span>
+        <div class="footer-social">
+          <a href="#" aria-label="Facebook">f</a>
+          <a href="#" aria-label="Twitter">𝕏</a>
+          <a href="#" aria-label="Instagram">◎</a>
+        </div>
+      </div>
+    </div>
+  </footer>
+
+  <div class="toast-container" id="toast-container"></div>
+
+  <script src="js/ui.js" defer></script>
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>

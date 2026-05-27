@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Listing Details - VibeMarket</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700&family=Libre+Baskerville:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+
+  <!-- Header -->
+  <header>
+    <div class="container navbar">
+      <div class="logo-container">
+        <a href="index.html" class="logo">
+          VibeMarket
+        </a>
+      </div>
+
+      <!-- Back Link -->
+      <a href="index.html" class="back-link">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M10.5 19.5 3 12m0 0 7.5-7.5M3 12h18" />
+        </svg>
+        Back to Marketplace
+      </a>
+
+      <!-- Actions -->
+      <div class="nav-actions" id="nav-actions-container">
+        <a href="login.html" class="nav-btn secondary">Log In</a>
+      </div>
+    </div>
+  </header>
+
+  <!-- Product Details Layout -->
+  <main class="container" style="padding-top: 20px;">
+    <div class="product-detail-layout" id="product-detail-container">
+      
+      <!-- Loading Skeleton -->
+      <div class="no-results" style="grid-column: 1 / -1; padding: 120px 0;">
+        <div class="loader" aria-hidden="true"></div>
+        <p>Fetching listing details...</p>
+      </div>
+
+    </div>
+
+    <!-- Bottom Discussion & Reviews -->
+    <section class="product-tabs-container">
+      
+      <!-- Product Q&A Chat Section -->
+      <div class="glass-panel" style="display: flex; flex-direction: column;">
+        <div class="panel-header-tab" style="padding: 20px 20px 0 20px; border-bottom: none;">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" style="width: 24px; height: 24px; color: var(--accent-indigo);">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M8.625 12a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm0 0H8.25m4.125 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm0 0H12m4.125 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm0 0h-.375M21 12c0 4.556-4.03 8.25-9 8.25a9.764 9.764 0 0 1-2.555-.337A5.972 5.972 0 0 1 5.41 20.97a5.969 5.969 0 0 1-.474-.065 4.48 4.48 0 0 0 .978-2.025c.09-.457-.133-.901-.467-1.226C3.93 16.178 3 14.189 3 12c0-4.556 4.03-8.25 9-8.25s9 3.694 9 8.25Z" />
+          </svg>
+          Product Q&A Discussion
+        </div>
+        <div class="comments-chat-wrapper">
+          <div class="comments-feed" id="comments-feed-container">
+            <p style="color: var(--text-muted); text-align: center; margin-top: 40px;">No messages yet. Ask a question about this listing!</p>
+          </div>
+          <div class="chat-input-area" id="comment-input-container">
+            <input type="text" id="new-comment-input" placeholder="Ask the seller a question..." disabled>
+            <button id="send-comment-btn" class="chat-send-btn" disabled>
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" style="width: 18px; height: 18px;">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M6 12 3.269 3.125A59.769 59.769 0 0 1 21.485 12 59.768 59.768 0 0 1 3.27 20.875L5.999 12Zm0 0h7.5" />
+              </svg>
+            </button>
+          </div>
+          <p id="comment-auth-warning" style="font-size: 12px; color: var(--text-muted); text-align: center; margin-top: 8px;">
+            Please <a href="login.html" style="color: var(--accent-cyan); text-decoration: underline;">log in</a> to post comments.
+          </p>
+        </div>
+      </div>
+
+      <!-- Ratings & Reviews Section -->
+      <div class="glass-panel reviews-wrapper">
+        <div class="panel-header-tab" style="margin-bottom: 0;">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" style="width: 24px; height: 24px; color: #f59e0b;">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M11.48 3.499c.172-.44.821-.44.993 0l2.316 4.73 5.176.751c.485.07.678.665.328 1.006l-3.754 3.658 1.08 5.148c.102.488-.41.861-.841.63L12 18.754l-4.57 2.402c-.431.231-.943-.142-.841-.63l1.08-5.148-3.754-3.658c-.35-.341-.157-.936.328-1.006l5.176-.751 2.316-4.73Z" />
+          </svg>
+          Ratings & Reviews
+        </div>
+
+        <!-- Rating Summary Box -->
+        <div class="ratings-summary">
+          <div class="rating-score-box">
+            <div class="rating-score-big" id="rating-avg-score">0.0</div>
+            <div class="rating-stars-row" id="rating-avg-stars">
+              <!-- Dynamically populated stars -->
+            </div>
+            <div class="rating-count-text" id="rating-total-count">0 reviews</div>
+          </div>
+          <div class="rating-bars" id="rating-bars-container">
+            <!-- 5-star to 1-star bar indicators -->
+            <div class="rating-bar-row">
+              <span>5 ★</span>
+              <div class="rating-bar-bg"><div class="rating-bar-fill" style="width: 0%;"></div></div>
+              <span class="pct-val" id="bar-5-val">0</span>
+            </div>
+            <div class="rating-bar-row">
+              <span>4 ★</span>
+              <div class="rating-bar-bg"><div class="rating-bar-fill" style="width: 0%;"></div></div>
+              <span class="pct-val" id="bar-4-val">0</span>
+            </div>
+            <div class="rating-bar-row">
+              <span>3 ★</span>
+              <div class="rating-bar-bg"><div class="rating-bar-fill" style="width: 0%;"></div></div>
+              <span class="pct-val" id="bar-3-val">0</span>
+            </div>
+            <div class="rating-bar-row">
+              <span>2 ★</span>
+              <div class="rating-bar-bg"><div class="rating-bar-fill" style="width: 0%;"></div></div>
+              <span class="pct-val" id="bar-2-val">0</span>
+            </div>
+            <div class="rating-bar-row">
+              <span>1 ★</span>
+              <div class="rating-bar-bg"><div class="rating-bar-fill" style="width: 0%;"></div></div>
+              <span class="pct-val" id="bar-1-val">0</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Write Review Form -->
+        <div class="write-review-panel" id="write-review-panel" style="display: none;">
+          <h4 style="font-size: 16px;">Write a Review</h4>
+          <div class="star-rating-selector" id="star-selector">
+            <span data-star="1">★</span>
+            <span data-star="2">★</span>
+            <span data-star="3">★</span>
+            <span data-star="4">★</span>
+            <span data-star="5">★</span>
+          </div>
+          <div class="form-group" style="margin-bottom: 0;">
+            <textarea id="review-comment-input" class="form-input" placeholder="Write your experience..." rows="3"></textarea>
+          </div>
+          <button id="submit-review-btn" class="form-submit-btn" style="margin-top: 10px; padding: 10px 0;">Submit Review</button>
+        </div>
+        <p id="review-auth-warning" style="font-size: 13px; color: var(--text-muted); text-align: center;">
+          Please <a href="login.html" style="color: var(--accent-cyan); text-decoration: underline;">log in</a> to write a product review.
+        </p>
+
+        <!-- Reviews List -->
+        <div class="reviews-list" id="reviews-list-container">
+          <p style="color: var(--text-muted); text-align: center; padding: 20px 0;">No reviews written yet.</p>
+        </div>
+
+      </div>
+
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container">
+      <div class="footer-bottom" style="border-top: none; padding-top: 0;">
+        <span>&copy; 2026 VibeMarket</span>
+        <a href="index.html" class="back-link" style="font-size: 0.85rem;">← Back to Marketplace</a>
+      </div>
+    </div>
+  </footer>
+
+  <div class="toast-container" id="toast-container"></div>
+
+  <script src="js/ui.js" defer></script>
+  <script type="module" src="js/api.js"></script>
+  <script type="module" src="js/auth.js"></script>
+  <script type="module" src="js/product.js"></script>
+</body>
+</html>

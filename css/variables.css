@@ -1,0 +1,117 @@
+/* VibeMarket — original marketplace palette (not Etsy) */
+
+:root {
+  --font-sans: 'DM Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-serif: 'Libre Baskerville', Georgia, 'Times New Roman', serif;
+  --font-display: var(--font-serif);
+
+  /* Surfaces — cool stone-lilac */
+  --bg-primary: #f2f0f5;
+  --bg-secondary: #ffffff;
+  --bg-elevated: #ffffff;
+  --bg-input: #ffffff;
+  --bg-subtle: #e8e6ed;
+
+  /* Text */
+  --text-primary: #1c1b22;
+  --text-secondary: #4b4f5c;
+  --text-muted: #72778a;
+  --text-on-dark: #ffffff;
+  --text-on-brand: #ffffff;
+
+  /* VibeMarket signature colors */
+  --brand-violet: #5b4bb8;
+  --brand-violet-hover: #4a3c9a;
+  --brand-violet-light: #ede9f9;
+
+  --brand-jade: #2a9d8f;
+  --brand-jade-hover: #238b7f;
+  --brand-jade-light: #e6f5f3;
+
+  --brand-plum: #3d3559;
+  --brand-plum-mid: #524872;
+  --brand-plum-dark: #2e2845;
+  --brand-highlight: #c9b8ff;
+
+  --brand-coral: #e45d50;
+  --brand-coral-hover: #cc4f43;
+
+  /* Mapped names used across stylesheets */
+  --brand-orange: var(--brand-jade);
+  --brand-orange-hover: var(--brand-jade-hover);
+  --brand-orange-light: var(--brand-jade-light);
+  --brand-teal: var(--brand-plum);
+  --brand-teal-dark: var(--brand-plum-dark);
+
+  /* Legacy aliases (JS inline styles) */
+  --accent-primary: var(--brand-jade);
+  --accent-primary-hover: var(--brand-jade-hover);
+  --accent-cyan: var(--brand-plum-mid);
+  --accent-indigo: var(--brand-violet);
+  --accent-rose: var(--brand-coral);
+  --accent-amber: #d4a017;
+
+  /* Panels */
+  --glass-bg: #ffffff;
+  --glass-bg-hover: #f9f8fb;
+  --glass-border: #d5d2dc;
+  --glass-shadow: 0 1px 3px rgba(28, 27, 34, 0.07), 0 1px 2px rgba(28, 27, 34, 0.05);
+
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-full: 9999px;
+
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 16px;
+  --space-lg: 24px;
+  --space-xl: 32px;
+  --space-2xl: 48px;
+
+  --header-height: 76px;
+  --container-max: 1280px;
+
+  --transition-fast: 0.15s ease;
+  --transition-base: 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-slow: 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+
+  --shadow-sm: 0 1px 2px rgba(28, 27, 34, 0.07);
+  --shadow-md: 0 4px 14px rgba(28, 27, 34, 0.09);
+  --shadow-lg: 0 10px 28px rgba(28, 27, 34, 0.11);
+  --shadow-glow: 0 4px 18px rgba(91, 75, 184, 0.22);
+
+  --gradient-primary: linear-gradient(135deg, var(--brand-jade) 0%, #3cb8a8 100%);
+  --gradient-hero: linear-gradient(135deg, var(--brand-plum) 0%, var(--brand-plum-mid) 100%);
+  --gradient-card: linear-gradient(180deg, #ffffff 0%, #f9f8fb 100%);
+  --gradient-footer: linear-gradient(180deg, #e8e6ed 0%, #f2f0f5 100%);
+
+  --focus-ring: 0 0 0 3px rgba(91, 75, 184, 0.28);
+}
+
+body.auth-container {
+  --bg-primary: #f2f0f5;
+  --bg-secondary: #ffffff;
+  --bg-elevated: #ffffff;
+  --bg-input: #ffffff;
+  --text-primary: #1c1b22;
+  --text-secondary: #4b4f5c;
+  --text-muted: #72778a;
+  --glass-bg: #ffffff;
+  --glass-border: #d5d2dc;
+  --glass-shadow: var(--shadow-md);
+}
+
+body.auth-container.dark-mode {
+  --bg-primary: #16141c;
+  --bg-secondary: #221f2a;
+  --bg-elevated: #221f2a;
+  --bg-input: #2e2a36;
+  --text-primary: #f2f0f5;
+  --text-secondary: #a8a3b8;
+  --text-muted: #7d778c;
+  --glass-bg: #221f2a;
+  --glass-border: #3a3548;
+  --glass-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+}

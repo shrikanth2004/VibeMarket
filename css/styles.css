@@ -1,0 +1,9 @@
+/**
+ * VibeMarket — Main stylesheet
+ * Modular imports for maintainability; single HTTP request when served as one file.
+ */
+@import url('variables.css');
+@import url('base.css');
+@import url('layout.css');
+@import url('components.css');
+@import url('pages.css');

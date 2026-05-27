@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Login / Register - VibeMarket</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700&family=Libre+Baskerville:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body class="auth-container">
+  <!-- Dark mode toggle -->
+  <button class="dark-mode-toggle" id="dark-mode-toggle" type="button" aria-label="Toggle dark mode">🌙 Dark</button>
+
+  <div class="auth-card">
+    <div class="nav-tabs">
+      <button class="nav-btn active" id="tab-login-btn">Sign In</button>
+      <button class="nav-btn" id="tab-signup-btn">Create Account</button>
+    </div>
+    <div class="auth-content">
+      <div style="text-align: center; margin-bottom: 32px;">
+        <a href="index.html" class="logo">
+          VibeMarket
+        </a>
+        <p style="color: var(--text-secondary); font-size: 13px; margin-top: 8px;" id="form-description-text">Sign in to list items, favorites, and post comments</p>
+      </div>
+
+      <!-- Sign In Form -->
+      <form id="login-form">
+        <div class="form-group">
+          <label for="login-email">Email Address</label>
+          <input type="email" id="login-email" class="form-input" placeholder="you@example.com" required>
+        </div>
+        <div class="form-group">
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <label for="login-password">Password</label>
+          </div>
+          <input type="password" id="login-password" class="form-input" placeholder="••••••••" required>
+        </div>
+        <button type="submit" class="form-submit-btn">Sign In</button>
+      </form>
+
+      <!-- Sign Up Form (hidden by default) -->
+      <form id="signup-form" style="display: none;">
+        <div class="form-group">
+          <label for="signup-name">Full Name</label>
+          <input type="text" id="signup-name" class="form-input" placeholder="John Doe" required>
+        </div>
+        <div class="form-group">
+          <label for="signup-email">Email Address</label>
+          <input type="email" id="signup-email" class="form-input" placeholder="you@example.com" required>
+        </div>
+        <div class="form-group">
+          <label for="signup-password">Password (min 6 characters)</label>
+          <input type="password" id="signup-password" class="form-input" placeholder="••••••••" minlength="6" required>
+        </div>
+        <button type="submit" class="form-submit-btn">Create Account</button>
+      </form>
+
+      <div style="text-align: center; margin-top: 24px; border-top: 1px solid var(--glass-border); padding-top: 20px;">
+        <a href="index.html" style="font-size: 13px; color: var(--accent-cyan); display: inline-flex; align-items: center; gap: 4px;">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" style="width: 14px; height: 14px;"><path stroke-linecap="round" stroke-linejoin="round" d="m2.25 12 8.954-8.955c.44-.439 1.152-.439 1.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75M8.25 21h8.25"/></svg>
+          Return to Marketplace Home
+        </a>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast-container" id="toast-container"></div>
+
+  <script src="js/ui.js" defer></script>
+  <script type="module" src="js/api.js"></script>
+  <script type="module" src="js/auth.js"></script>
+  <script>
+    const toggle = document.getElementById('dark-mode-toggle');
+    if (toggle) {
+      toggle.addEventListener('click', () => {
+        document.body.classList.toggle('dark-mode');
+        localStorage.setItem('theme', document.body.classList.contains('dark-mode') ? 'dark' : 'light');
+      });
+    }
+    // Apply stored theme
+    if (localStorage.getItem('theme') === 'dark') {
+      document.body.classList.add('dark-mode');
+    }
+  </script>
+  <script type="module">
+    import { isLogged } from './js/auth.js';
+    document.addEventListener('DOMContentLoaded', () => {
+      if (isLogged()) {
+        window.location.href = 'index.html';
+      }
+    });
+  </script>
+</body>
+</html>

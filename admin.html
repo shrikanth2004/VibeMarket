@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin Moderation Panel - VibeMarket</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700&family=Libre+Baskerville:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+
+  <!-- Header -->
+  <header>
+    <div class="container navbar">
+      <div class="logo-container">
+        <a href="index.html" class="logo">
+          VibeMarket <span>ADMIN</span>
+        </a>
+      </div>
+
+      <!-- Links -->
+      <a href="index.html" class="back-link">Back to Marketplace</a>
+
+      <!-- Actions -->
+      <div class="nav-actions" id="nav-actions-container">
+        <!-- populated dynamically -->
+      </div>
+    </div>
+  </header>
+
+  <!-- Admin Main Panel -->
+  <main class="container admin-main">
+    
+    <div class="admin-page-header">
+      <h1 class="admin-page-title">Admin Dashboard</h1>
+      <p>Marketplace moderation & user role control console.</p>
+    </div>
+
+    <div class="admin-stats-grid">
+      <div class="glass-panel admin-stat-card">
+        <h3>Total Users</h3>
+        <p style="color: var(--accent-cyan);" id="stat-total-users">0</p>
+      </div>
+      <div class="glass-panel admin-stat-card">
+        <h3>Active Listings</h3>
+        <p style="color: var(--accent-indigo);" id="stat-total-listings">0</p>
+      </div>
+      <div class="glass-panel admin-stat-card">
+        <h3>Average Pricing</h3>
+        <p id="stat-avg-price">₹0</p>
+      </div>
+    </div>
+
+    <div class="admin-tabs">
+      <button class="category-chip active" id="btn-admin-listings">Moderate Listings</button>
+      <button class="category-chip" id="btn-admin-users">Manage Users</button>
+    </div>
+
+    <!-- Listings Tab Section -->
+    <section id="sec-admin-listings" class="glass-panel" style="padding: 24px;">
+      <h2 style="font-size: 20px; margin-bottom: 20px;">All Marketplace Listings</h2>
+      <div class="admin-table-wrapper">
+        <table class="admin-table">
+          <thead>
+            <tr>
+              <th>Item details</th>
+              <th>Category</th>
+              <th>Seller ID</th>
+              <th>Price</th>
+              <th>Posted Date</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody id="admin-listings-table-body">
+            <!-- Dynamically populated -->
+            <tr>
+              <td colspan="6" style="text-align: center; color: var(--text-muted); padding: 40px 0;">Loading listings...</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Users Tab Section (Hidden by default) -->
+    <section id="sec-admin-users" class="glass-panel" style="padding: 24px; display: none;">
+      <h2 style="font-size: 20px; margin-bottom: 20px;">Platform Registered Users</h2>
+      <div class="admin-table-wrapper">
+        <table class="admin-table">
+          <thead>
+            <tr>
+              <th>Full Name</th>
+              <th>User ID</th>
+              <th>Assigned Role</th>
+              <th>Joined Date</th>
+              <th>Moderation Actions</th>
+            </tr>
+          </thead>
+          <tbody id="admin-users-table-body">
+            <!-- Dynamically populated -->
+            <tr>
+              <td colspan="5" style="text-align: center; color: var(--text-muted); padding: 40px 0;">Loading profiles...</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+  </main>
+
+  <footer class="site-footer">
+    <div class="container">
+      <div class="footer-bottom" style="border-top: none; padding-top: 0;">
+        <span>&copy; 2026 VibeMarket Admin</span>
+        <a href="index.html" class="back-link" style="font-size: 0.85rem;">← Marketplace</a>
+      </div>
+    </div>
+  </footer>
+
+  <div class="toast-container" id="toast-container"></div>
+
+  <script src="js/ui.js" defer></script>
+  <script type="module" src="js/api.js"></script>
+  <script type="module" src="js/auth.js"></script>
+  <script type="module" src="js/admin.js"></script>
+</body>
+</html>
