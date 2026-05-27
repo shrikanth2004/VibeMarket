@@ -65,10 +65,12 @@ async def serve_login_html():
 async def serve_admin_html():
     return FileResponse("admin.html")
 
-# 3. Startup Hook to open browser automatically
+# 3. Startup Hook (local dev only — opens browser once on first run)
+import sys
 @app.on_event("startup")
 def open_browser():
-    # We use a temp file flag to make sure browser only opens once and not on every hot-reload code change
+    if "vercel" in sys.argv[0].lower() or os.getenv("VERCEL"):
+        return
     temp_file = os.path.join(tempfile.gettempdir(), "vibemarket_browser_opened.txt")
     if not os.path.exists(temp_file):
         with open(temp_file, "w") as f:

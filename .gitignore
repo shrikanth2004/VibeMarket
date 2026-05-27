@@ -104,6 +104,7 @@ Thumbs.db
 *.csv
 *.tsv
 *.json
+!vercel.json
 *.sqlite3
 *.h5
 *.npz
