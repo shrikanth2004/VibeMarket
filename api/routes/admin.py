@@ -1,13 +1,12 @@
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
-
+import uuid
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
-from api.supabase_client import supabase_admin
+from api.firebase_client import db
 from api.dependencies import get_current_admin
-from api.storage_utils import extract_storage_path, resolve_products_list, BUCKET
+from api.storage_utils import extract_storage_path, resolve_products_list, delete_storage_files
 from api.db_features import (
-    fetch_products_columns,
     get_product_status,
     migration_status,
 )
@@ -19,28 +18,25 @@ class UpdateRoleRequest(BaseModel):
 
 @router.get("/setup")
 async def get_setup_status():
-    """Report whether optional DB migrations have been applied."""
+    """Report setup status (always ready for Firestore)."""
     return migration_status()
 
 
 @router.get("/stats")
 async def get_admin_stats():
     try:
-        users_res = supabase_admin.table("profiles").select("id, created_at").execute()
-        products_res = supabase_admin.table("products").select(
-            fetch_products_columns()
-        ).execute()
-        reviews_res = supabase_admin.table("reviews").select("id").execute()
-        wishlist_res = supabase_admin.table("wishlists").select("id").execute()
+        users_ref = db.collection("profiles").stream()
+        products_ref = db.collection("products").stream()
+        reviews_ref = db.collection("reviews").stream()
+        wishlist_ref = db.collection("wishlists").stream()
 
-        users = users_res.data or []
-        products = products_res.data or []
-        reviews_count = len(reviews_res.data or [])
-        wishlist_count = len(wishlist_res.data or [])
+        users = [doc.to_dict() for doc in users_ref]
+        products = [doc.to_dict() for doc in products_ref]
+        reviews_count = len([doc.id for doc in reviews_ref])
+        wishlist_count = len([doc.id for doc in wishlist_ref])
 
         active_listings = sum(1 for p in products if get_product_status(p) == "active")
         sold_listings = sum(1 for p in products if get_product_status(p) == "sold")
-        setup = migration_status()
 
         prices = [float(p["price"]) for p in products if p.get("price") is not None]
         avg_price = round(sum(prices) / len(prices), 2) if prices else 0
@@ -81,7 +77,7 @@ async def get_admin_stats():
             "total_users": len(users),
             "total_listings": len(products),
             "active_listings": active_listings,
-            "sold_listings": sold_listings if setup["listing_status"] else 0,
+            "sold_listings": sold_listings,
             "avg_price": avg_price,
             "total_reviews": reviews_count,
             "total_wishlists": wishlist_count,
@@ -90,7 +86,7 @@ async def get_admin_stats():
             "listings_by_category": listings_by_category,
             "listings_per_day": listings_per_day,
             "users_per_day": users_per_day,
-            "migration": setup,
+            "migration": migration_status(),
         }
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -99,10 +95,33 @@ async def get_admin_stats():
 @router.get("/listings")
 async def get_all_listings_admin():
     try:
-        res = supabase_admin.table("products").select(
-            "*, profiles(full_name, avatar_url)"
-        ).order("created_at", desc=True).execute()
-        return resolve_products_list(res.data or [])
+        products_ref = db.collection("products").stream()
+        products = [doc.to_dict() for doc in products_ref]
+        
+        # Sort descending by created_at
+        products.sort(key=lambda x: x.get("created_at") or "", reverse=True)
+        
+        # Join seller profiles info
+        seller_ids = {p["seller_id"] for p in products if p.get("seller_id")}
+        seller_profiles = {}
+        for s_id in seller_ids:
+            try:
+                prof_doc = db.collection("profiles").document(s_id).get()
+                if prof_doc.exists:
+                    prof_data = prof_doc.to_dict()
+                    seller_profiles[s_id] = {
+                        "full_name": prof_data.get("full_name"),
+                        "avatar_url": prof_data.get("avatar_url")
+                    }
+                else:
+                    seller_profiles[s_id] = {"full_name": "User", "avatar_url": None}
+            except Exception:
+                seller_profiles[s_id] = {"full_name": "User", "avatar_url": None}
+                
+        for p in products:
+            p["profiles"] = seller_profiles.get(p.get("seller_id"), {"full_name": "User", "avatar_url": None})
+            
+        return resolve_products_list(products)
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -110,9 +129,11 @@ async def get_all_listings_admin():
 @router.get("/users")
 async def get_all_users():
     try:
-        # Fetch all user profiles from the profiles table
-        res = supabase_admin.table("profiles").select("*").order("created_at", desc=True).execute()
-        return res.data
+        users_ref = db.collection("profiles").stream()
+        users = [doc.to_dict() for doc in users_ref]
+        # Sort descending by created_at
+        users.sort(key=lambda x: x.get("created_at") or "", reverse=True)
+        return users
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -122,47 +143,61 @@ async def update_user_role(user_id: str, body: UpdateRoleRequest):
         raise HTTPException(status_code=400, detail="Invalid role. Must be 'user' or 'admin'.")
         
     try:
-        # Update user role in the profiles table
-        res = supabase_admin.table("profiles").update({"role": body.role}).eq("id", user_id).execute()
-        if not res.data:
+        profile_ref = db.collection("profiles").document(user_id)
+        if not profile_ref.get().exists:
             raise HTTPException(status_code=404, detail="User profile not found.")
-        return {"message": "User role updated successfully.", "user": res.data[0]}
+            
+        profile_ref.update({"role": body.role})
+        updated = profile_ref.get().to_dict()
+        return {"message": "User role updated successfully.", "user": updated}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
 @router.delete("/listings/{product_id}")
 async def moderate_delete_listing(product_id: str):
     try:
-        # Fetch product details first to clean up storage
-        prod_res = supabase_admin.table("products").select("*").eq("id", product_id).execute()
-        if not prod_res.data:
+        prod_ref = db.collection("products").document(product_id)
+        prod_doc = prod_ref.get()
+        if not prod_doc.exists:
             raise HTTPException(status_code=404, detail="Listing not found.")
             
-        product = prod_res.data[0]
+        product = prod_doc.to_dict()
         
         # Delete from database
-        supabase_admin.table("products").delete().eq("id", product_id).execute()
+        prod_ref.delete()
         
         # Try to delete images from storage
         try:
             files_to_delete = []
-            for stored in product["images"]:
+            for stored in product.get("images") or []:
                 path = extract_storage_path(stored)
                 if path:
                     files_to_delete.append(path)
             if files_to_delete:
-                supabase_admin.storage.from_(BUCKET).remove(files_to_delete)
+                delete_storage_files(files_to_delete)
         except Exception:
             pass
             
-        # Optional: insert system notification for user whose product was moderated
-        supabase_admin.table("notifications").insert({
-            "user_id": product["seller_id"],
-            "type": "system",
-            "title": "Listing removed by moderator",
-            "message": f"Your listing for '{product['title']}' was removed because it violated marketplace guidelines."
-        }).execute()
+        # Insert system notification for user whose product was moderated
+        try:
+            notif_id = str(uuid.uuid4())
+            db.collection("notifications").document(notif_id).set({
+                "id": notif_id,
+                "user_id": product["seller_id"],
+                "type": "system",
+                "title": "Listing removed by moderator",
+                "message": f"Your listing for '{product['title']}' was removed because it violated marketplace guidelines.",
+                "is_read": False,
+                "created_at": datetime.utcnow().isoformat()
+            })
+        except Exception:
+            pass
         
         return {"message": "Listing deleted successfully by moderator."}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+

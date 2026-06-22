@@ -86,8 +86,9 @@ celerybeat-schedule
 # SageMath parsed files
 *.sage.py
 
-# Environments
+# Environment variables
 .env
+serviceAccountKey.json
 .venv
 env/
 venv/

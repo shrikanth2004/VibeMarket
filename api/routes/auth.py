@@ -1,91 +1,33 @@
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
 from pydantic import BaseModel, EmailStr, Field
 from typing import Optional
-from api.supabase_client import supabase, supabase_admin
+import io
+import base64
+from PIL import Image
+from firebase_admin import auth as firebase_auth
+from api.firebase_client import db
 from api.dependencies import get_current_user
-from api.storage_utils import upload_avatar_image, resolve_profile_avatar
+from api.storage_utils import resolve_profile_avatar
 
 router = APIRouter(prefix="/auth", tags=["auth"])
-
-class SignUpRequest(BaseModel):
-    email: EmailStr
-    password: str = Field(..., min_length=6)
-    full_name: str = Field(..., min_length=2)
-
-class LoginRequest(BaseModel):
-    email: EmailStr
-    password: str
 
 class ProfileUpdateRequest(BaseModel):
     full_name: Optional[str] = None
     avatar_url: Optional[str] = None
 
-@router.post("/signup", status_code=status.HTTP_201_CREATED)
-async def signup(body: SignUpRequest):
-    try:
-        # Sign up the user in Supabase Auth
-        res = supabase.auth.sign_up({
-            "email": body.email,
-            "password": body.password,
-            "options": {
-                "data": {
-                    "full_name": body.full_name
-                }
-            }
-        })
-        
-        if not res.user:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Signup failed. Please try again."
-            )
-            
-        return {
-            "message": "User registered successfully.",
-            "user": {
-                "id": res.user.id,
-                "email": res.user.email
-            }
-        }
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e)
-        )
 
-@router.post("/login")
-async def login(body: LoginRequest):
-    try:
-        # Authenticate the user against Supabase Auth
-        res = supabase.auth.sign_in_with_password({
-            "email": body.email,
-            "password": body.password
-        })
-        
-        if not res.session:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid email or password."
-            )
-            
-        return {
-            "access_token": res.session.access_token,
-            "refresh_token": res.session.refresh_token,
-            "token_type": "bearer",
-            "user": {
-                "id": res.user.id,
-                "email": res.user.email
-            }
-        }
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e)
-        )
+@router.post("/verify-token")
+async def verify_token(current_user: dict = Depends(get_current_user)):
+    """Verify a Firebase ID token and return the user profile.
+    The frontend sends the Firebase ID token, and this endpoint validates it
+    and returns/creates the Firestore profile."""
+    return current_user
+
 
 @router.get("/me")
 async def get_me(current_user: dict = Depends(get_current_user)):
     return current_user
+
 
 @router.put("/profile")
 async def update_profile(body: ProfileUpdateRequest, current_user: dict = Depends(get_current_user)):
@@ -94,18 +36,27 @@ async def update_profile(body: ProfileUpdateRequest, current_user: dict = Depend
         update_data["full_name"] = body.full_name
     if body.avatar_url is not None:
         update_data["avatar_url"] = body.avatar_url
-        
+
     if not update_data:
         raise HTTPException(status_code=400, detail="No update data provided.")
-        
+
     try:
-        # Update in database profiles table using admin client (bypasses default restrictive write policies)
-        res = supabase_admin.table("profiles").update(update_data).eq("id", current_user["id"]).execute()
-        if not res.data:
-            raise HTTPException(status_code=404, detail="Profile not found.")
+        profile_ref = db.collection("profiles").document(current_user["id"])
+        profile_doc = profile_ref.get()
+        if not profile_doc.exists:
+            # Create profile first
+            update_data["id"] = current_user["id"]
+            update_data["email"] = current_user.get("email") or ""
+            update_data["role"] = current_user.get("role") or "user"
+            update_data["created_at"] = current_user.get("created_at") or ""
+            profile_ref.set(update_data)
+        else:
+            profile_ref.update(update_data)
+
+        updated_profile = profile_ref.get().to_dict()
         return {
             "message": "Profile updated successfully.",
-            "profile": resolve_profile_avatar(res.data[0])
+            "profile": resolve_profile_avatar(updated_profile)
         }
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -127,17 +78,49 @@ async def upload_profile_avatar(
         if len(file_bytes) > 5 * 1024 * 1024:
             raise HTTPException(status_code=400, detail="Image must be 5 MB or smaller.")
 
-        avatar_path = upload_avatar_image(current_user["id"], file_bytes, avatar.content_type)
-        res = supabase_admin.table("profiles").update({"avatar_url": avatar_path}).eq(
-            "id", current_user["id"]
-        ).execute()
+        # Process image using Pillow to resize and compress it
+        image = Image.open(io.BytesIO(file_bytes))
 
-        if not res.data:
-            raise HTTPException(status_code=404, detail="Profile not found.")
+        # Convert RGBA to RGB if necessary for JPEG conversion
+        if image.mode in ("RGBA", "P"):
+            image = image.convert("RGB")
+
+        # Get standard resize filter (LANCZOS)
+        resample_filter = Image.LANCZOS
+        if hasattr(Image, 'Resampling'):
+            resample_filter = Image.Resampling.LANCZOS
+        elif hasattr(Image, 'ANTIALIAS'):
+            resample_filter = Image.ANTIALIAS
+
+        # Resize to 200x200
+        image = image.resize((200, 200), resample_filter)
+
+        # Save as JPEG in bytes buffer
+        buffered = io.BytesIO()
+        image.save(buffered, format="JPEG", quality=85)
+
+        # Base64 encode the compressed JPEG bytes
+        img_str = base64.b64encode(buffered.getvalue()).decode("utf-8")
+        avatar_path = f"data:image/jpeg;base64,{img_str}"
+
+        profile_ref = db.collection("profiles").document(current_user["id"])
+        profile_doc = profile_ref.get()
+        if not profile_doc.exists:
+            profile_ref.set({
+                "id": current_user["id"],
+                "email": current_user.get("email") or "",
+                "role": current_user.get("role") or "user",
+                "avatar_url": avatar_path,
+                "created_at": current_user.get("created_at") or ""
+            })
+        else:
+            profile_ref.update({"avatar_url": avatar_path})
+
+        updated_profile = profile_ref.get().to_dict()
 
         return {
             "message": "Profile photo updated successfully.",
-            "profile": resolve_profile_avatar(res.data[0]),
+            "profile": resolve_profile_avatar(updated_profile),
         }
     except HTTPException:
         raise

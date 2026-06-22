@@ -1,6 +1,26 @@
-// VibeMarket Client API Wrapper
+// VibeMarket Client API Wrapper — Firebase Auth Edition
 
-// API base URL — same origin when served by FastAPI, fallback for local dev
+import { getAuth, signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
+
+// Firebase web config — these are PUBLIC keys, safe to commit
+// TODO: Replace with your Firebase project config from Firebase Console > Project Settings > General > Your apps > Web app
+// For Firebase JS SDK v7.20.0 and later, measurementId is optional
+const firebaseConfig = {
+  apiKey: "AIzaSyCZwr88hebvrX7EygM3QGGwDR2DJQIuuU0",
+  authDomain: "pythonfullstack-c0f8f.firebaseapp.com",
+  projectId: "pythonfullstack-c0f8f",
+  storageBucket: "pythonfullstack-c0f8f.firebasestorage.app",
+  messagingSenderId: "382599110508",
+  appId: "1:382599110508:web:fb4b13e80ba7b55feb1d49",
+  measurementId: "G-JM51P1E0YF"
+};
+
+const firebaseApp = initializeApp(firebaseConfig);
+const auth = getAuth(firebaseApp);
+const googleProvider = new GoogleAuthProvider();
+
+// API base URL — same origin when served by FastAPI
 function resolveApiBase() {
   const { protocol, hostname, port, origin } = window.location;
   if (protocol === 'http:' || protocol === 'https:') {
@@ -16,7 +36,14 @@ export const API_BASE = resolveApiBase();
 
 const REQUEST_TIMEOUT_MS = 25000;
 
-// Helper: Token persistence
+// Helper: get the current Firebase user's ID token
+async function getIdToken() {
+  const user = auth.currentUser;
+  if (!user) return null;
+  return user.getIdToken();
+}
+
+// Helper: Token persistence (stores the Firebase ID token for API calls)
 export function getAccessToken() {
   return localStorage.getItem('access_token');
 }
@@ -44,7 +71,6 @@ export function setCurrentUser(user) {
 
 export function clearSession() {
   localStorage.removeItem('access_token');
-  localStorage.removeItem('refresh_token');
   localStorage.removeItem('user');
 }
 
@@ -52,7 +78,7 @@ export function isLogged() {
   return getAccessToken() !== null;
 }
 
-/** Format amounts in Indian Rupees (₹) */
+/** Format amounts in Indian Rupees */
 export function formatPrice(amount) {
   const value = Number(amount);
   if (!Number.isFinite(value)) return '₹0';
@@ -67,12 +93,10 @@ export function formatPrice(amount) {
 export function showToast(message, type = 'success') {
   const container = document.getElementById('toast-container');
   if (!container) return;
-  
+
   const toast = document.createElement('div');
   toast.className = `toast ${type}`;
-  toast.innerText = message;
-  
-  // Icon placeholder based on type
+
   let icon = '';
   if (type === 'success') icon = '✓ ';
   if (type === 'error') icon = '✗ ';
@@ -80,8 +104,7 @@ export function showToast(message, type = 'success') {
   toast.innerText = icon + message;
 
   container.appendChild(toast);
-  
-  // Remove after 3.5 seconds
+
   setTimeout(() => {
     toast.style.animation = 'fadeOut var(--transition-fast) forwards';
     setTimeout(() => toast.remove(), 200);
@@ -92,11 +115,11 @@ export function showToast(message, type = 'success') {
 async function request(endpoint, method = 'GET', body = null, isMultipart = false) {
   const token = getAccessToken();
   const headers = {};
-  
+
   if (token) {
     headers['Authorization'] = `Bearer ${token}`;
   }
-  
+
   if (!isMultipart && !(body instanceof FormData)) {
     headers['Content-Type'] = 'application/json';
   }
@@ -141,35 +164,32 @@ async function request(endpoint, method = 'GET', body = null, isMultipart = fals
 
 // Exposed API Endpoints
 export const api = {
-  // Authentication
+  // Authentication (Firebase)
   auth: {
-    signup: (email, password, fullName) => 
-      request('/auth/signup', 'POST', { email, password, full_name: fullName }),
-    
-    login: async (email, password) => {
-      const res = await request('/auth/login', 'POST', { email, password });
-      if (res.access_token) {
-        setAccessToken(res.access_token);
-        // Fetch full profile details immediately to save roles/names
-        try {
-          const profile = await request('/auth/me', 'GET');
-          setCurrentUser(profile);
-        } catch (e) {
-          setCurrentUser(res.user);
-        }
-      }
-      return res;
+    loginWithGoogle: async () => {
+      const result = await signInWithPopup(auth, googleProvider);
+      const idToken = await result.user.getIdToken();
+      setAccessToken(idToken);
+
+      // Verify token with backend and get/create profile
+      const profile = await request('/auth/verify-token', 'POST');
+      setCurrentUser(profile);
+      return result;
     },
-    
-    logout: () => {
+
+    logout: async () => {
+      try {
+        await signOut(auth);
+      } catch (e) {
+        console.error('Firebase sign out error:', e);
+      }
       clearSession();
     },
-    
+
     getProfile: () => request('/auth/me', 'GET'),
-    
+
     updateProfile: async (fullName) => {
       const res = await request('/auth/profile', 'PUT', { full_name: fullName });
-      // Sync user storage
       if (res.profile) {
         const u = getCurrentUser() || {};
         setCurrentUser({ ...u, ...res.profile });
@@ -203,13 +223,13 @@ export const api = {
     },
 
     get: (id) => request(`/products/${id}`, 'GET'),
-    
+
     create: (formData) => request('/products', 'POST', formData, true),
-    
+
     update: (id, formData) => request(`/products/${id}`, 'PUT', formData, true),
 
     updateStatus: (id, status) => request(`/products/${id}/status`, 'PATCH', { status }),
-    
+
     delete: (id) => request(`/products/${id}`, 'DELETE')
   },
 
@@ -230,14 +250,14 @@ export const api = {
   // Reviews
   reviews: {
     list: (productId) => request(`/reviews/${productId}`, 'GET'),
-    create: (productId, rating, comment) => 
+    create: (productId, rating, comment) =>
       request(`/reviews/${productId}`, 'POST', { rating, comment })
   },
 
   // Comments
   comments: {
     list: (productId) => request(`/comments/${productId}`, 'GET'),
-    create: (productId, content) => 
+    create: (productId, content) =>
       request(`/comments/${productId}`, 'POST', { content })
   },
 
@@ -256,3 +276,20 @@ export const api = {
     deleteListing: (productId) => request(`/admin/listings/${productId}`, 'DELETE')
   }
 };
+
+// Listen for Firebase auth state changes to keep token fresh
+onAuthStateChanged(auth, async (user) => {
+  if (user) {
+    const token = await user.getIdToken();
+    setAccessToken(token);
+  }
+});
+
+// Refresh token periodically (tokens expire after 1 hour)
+setInterval(async () => {
+  const user = auth.currentUser;
+  if (user) {
+    const token = await user.getIdToken(true);
+    setAccessToken(token);
+  }
+}, 50 * 60 * 1000); // Refresh every 50 minutes

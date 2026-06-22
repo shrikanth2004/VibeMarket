@@ -1,11 +1,12 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 from typing import Optional
+import uuid
+from datetime import datetime
 
-from api.supabase_client import supabase_admin
+from api.firebase_client import db
 from api.dependencies import get_current_user
 from api.config import CATEGORIES, CONDITIONS
-from api.db_features import has_saved_searches_table, MIGRATION_HINT
 
 router = APIRouter(prefix="/saved-searches", tags=["saved-searches"])
 
@@ -51,22 +52,14 @@ def _validate_search_fields(body: SavedSearchCreate) -> None:
         )
 
 
-def _require_saved_searches_table():
-    if not has_saved_searches_table():
-        raise HTTPException(
-            status_code=503,
-            detail=f"Saved searches are not available yet. {MIGRATION_HINT}",
-        )
-
-
 @router.get("")
 async def list_saved_searches(current_user: dict = Depends(get_current_user)):
-    _require_saved_searches_table()
     try:
-        res = supabase_admin.table("saved_searches").select("*").eq(
-            "user_id", current_user["id"]
-        ).order("created_at", desc=True).execute()
-        return res.data or []
+        searches_ref = db.collection("saved_searches").where("user_id", "==", current_user["id"]).stream()
+        searches = [doc.to_dict() for doc in searches_ref]
+        # Sort descending by created_at
+        searches.sort(key=lambda x: x.get("created_at") or "", reverse=True)
+        return searches
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -76,10 +69,11 @@ async def create_saved_search(
     body: SavedSearchCreate,
     current_user: dict = Depends(get_current_user),
 ):
-    _require_saved_searches_table()
     _validate_search_fields(body)
     try:
+        search_id = str(uuid.uuid4())
         row = {
+            "id": search_id,
             "user_id": current_user["id"],
             "label": body.label or _default_label(body),
             "search": body.search or None,
@@ -90,9 +84,10 @@ async def create_saved_search(
             "location": body.location or None,
             "sort_by": body.sort_by or "newest",
             "alert_enabled": body.alert_enabled,
+            "created_at": datetime.utcnow().isoformat()
         }
-        res = supabase_admin.table("saved_searches").insert(row).execute()
-        return res.data[0]
+        db.collection("saved_searches").document(search_id).set(row)
+        return row
     except HTTPException:
         raise
     except Exception as e:
@@ -105,17 +100,18 @@ async def update_saved_search(
     body: SavedSearchUpdate,
     current_user: dict = Depends(get_current_user),
 ):
-    _require_saved_searches_table()
     update_data = {k: v for k, v in body.model_dump().items() if v is not None}
     if not update_data:
         raise HTTPException(status_code=400, detail="No update data provided.")
     try:
-        res = supabase_admin.table("saved_searches").update(update_data).eq(
-            "id", search_id
-        ).eq("user_id", current_user["id"]).execute()
-        if not res.data:
+        search_ref = db.collection("saved_searches").document(search_id)
+        search_doc = search_ref.get()
+        if not search_doc.exists or search_doc.to_dict().get("user_id") != current_user["id"]:
             raise HTTPException(status_code=404, detail="Saved search not found.")
-        return res.data[0]
+            
+        search_ref.update(update_data)
+        updated = search_ref.get().to_dict()
+        return updated
     except HTTPException:
         raise
     except Exception as e:
@@ -127,13 +123,13 @@ async def delete_saved_search(
     search_id: str,
     current_user: dict = Depends(get_current_user),
 ):
-    _require_saved_searches_table()
     try:
-        res = supabase_admin.table("saved_searches").delete().eq(
-            "id", search_id
-        ).eq("user_id", current_user["id"]).execute()
-        if not res.data:
+        search_ref = db.collection("saved_searches").document(search_id)
+        search_doc = search_ref.get()
+        if not search_doc.exists or search_doc.to_dict().get("user_id") != current_user["id"]:
             raise HTTPException(status_code=404, detail="Saved search not found.")
+            
+        search_ref.delete()
         return {"message": "Saved search deleted."}
     except HTTPException:
         raise
@@ -154,3 +150,4 @@ def _default_label(body: SavedSearchCreate) -> str:
         hi = int(body.max_price) if body.max_price is not None else "∞"
         parts.append(f"₹{lo}–{hi}")
     return " · ".join(parts) if parts else "Saved search"
+

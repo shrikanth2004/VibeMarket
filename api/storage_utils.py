@@ -1,73 +1,62 @@
-"""Supabase Storage helpers for product images."""
-from typing import Any, List, Optional
-from api.supabase_client import supabase_admin
+"""Local filesystem storage helpers for product and avatar images.
 
-BUCKET = "product-images"
-# 7 days — refreshed on each API read
-SIGNED_URL_EXPIRY_SEC = 60 * 60 * 24 * 7
+All images are stored under the directory configured by LOCAL_MEDIA_ROOT (default: 'media')
+and served via the /media static route mounted in app.py."""
 
-
-def _storage_bucket():
-    return supabase_admin.storage.from_(BUCKET)
+from typing import List, Optional
+import os
+from pathlib import Path
+from api.config import LOCAL_MEDIA_ROOT
 
 
 def extract_storage_path(stored: str) -> Optional[str]:
-    """Get bucket-relative path from a stored path or legacy public/signed URL."""
+    """Normalise a stored path – strip leading slashes, pass through as-is."""
     if not stored or not isinstance(stored, str):
         return None
     stored = stored.strip()
+    # If it's already an external http URL, just return it
     if stored.startswith("http"):
-        marker = f"/{BUCKET}/"
-        if marker not in stored:
-            return None
-        rest = stored.split(marker, 1)[1]
-        return rest.split("?")[0]
+        return None
     return stored.lstrip("/")
 
 
-def get_accessible_image_url(stored: str, expires_in: int = SIGNED_URL_EXPIRY_SEC) -> str:
-    """Return a browser-loadable URL (signed) for Supabase storage, or pass through external URLs."""
+def get_accessible_image_url(stored: str) -> str:
+    """Return a browser-loadable URL for a locally stored image."""
     if not stored:
         return stored
-    if stored.startswith("http") and f"/{BUCKET}/" not in stored:
+    # External URLs or Data URIs – pass through unchanged
+    if stored.startswith("http") or stored.startswith("data:"):
         return stored
-
-    path = extract_storage_path(stored)
-    if not path:
-        return stored
-
-    try:
-        result = _storage_bucket().create_signed_url(path, expires_in)
-        return result.get("signedUrl") or result.get("signedURL") or stored
-    except Exception as exc:
-        print(f"[storage] signed URL failed for {path}: {exc}")
-        return stored
+    # Local path – serve via /media static route
+    path = stored.lstrip("/")
+    return f"/media/{path}"
 
 
 def upload_product_image(file_path: str, file_bytes: bytes, content_type: str) -> str:
-    """Upload bytes to product-images; returns bucket-relative path for DB storage."""
-    _storage_bucket().upload(
-        path=file_path,
-        file=file_bytes,
-        file_options={"content-type": content_type, "upsert": "true"},
-    )
+    """Write image bytes to the local media directory. Returns the relative path."""
+    local_path = Path(LOCAL_MEDIA_ROOT) / file_path
+    local_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(local_path, "wb") as f:
+        f.write(file_bytes)
     return file_path
 
 
-def upload_avatar_image(user_id: str, file_bytes: bytes, content_type: str) -> str:
-    """Upload profile avatar; returns bucket-relative path for DB storage."""
-    ext = "jpg"
-    if content_type == "image/png":
-        ext = "png"
-    elif content_type == "image/webp":
-        ext = "webp"
-    file_path = f"avatars/{user_id}/avatar.{ext}"
-    upload_product_image(file_path, file_bytes, content_type or "image/jpeg")
-    return file_path
+
+def delete_storage_files(paths: List[str]):
+    """Delete multiple files from local storage."""
+    for p in paths:
+        if not p or p.startswith("http") or p.startswith("data:"):
+            continue
+        try:
+            local_path = Path(LOCAL_MEDIA_ROOT) / p
+            if local_path.is_file():
+                local_path.unlink()
+        except Exception as e:
+            print(f"[storage] delete failed for {p}: {e}")
 
 
 def resolve_profile_avatar(profile: Optional[dict]) -> Optional[dict]:
-    """Sign storage avatar paths for browser display."""
+    """Convert stored avatar paths to browser-loadable URLs."""
     if not profile:
         return profile
     avatar = profile.get("avatar_url")

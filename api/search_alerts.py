@@ -1,7 +1,9 @@
 """Match new listings against saved searches and send notifications."""
 from typing import Any, Dict, Optional
+import uuid
+from datetime import datetime
 
-from api.supabase_client import supabase_admin
+from api.firebase_client import db
 from api.db_features import has_saved_searches_table
 
 
@@ -36,12 +38,9 @@ def notify_saved_search_matches(product: Dict[str, Any]) -> None:
     if product.get("status") not in (None, "active"):
         return
 
-    if not has_saved_searches_table():
-        return
-
     try:
-        res = supabase_admin.table("saved_searches").select("*").eq("alert_enabled", True).execute()
-        searches = res.data or []
+        searches_ref = db.collection("saved_searches").where("alert_enabled", "==", True).stream()
+        searches = [doc.to_dict() for doc in searches_ref]
     except Exception as exc:
         print(f"[search_alerts] failed to load saved searches: {exc}")
         return
@@ -58,13 +57,17 @@ def notify_saved_search_matches(product: Dict[str, Any]) -> None:
 
         label = s.get("label") or "your saved search"
         try:
-            supabase_admin.table("notifications").insert({
+            notif_id = str(uuid.uuid4())
+            db.collection("notifications").document(notif_id).set({
+                "id": notif_id,
                 "user_id": s["user_id"],
                 "type": "search_alert",
                 "title": "New listing matches your alert",
                 "message": f"'{title}' ({price}) matches {label}.",
                 "link_url": f"/product.html?id={product_id}",
-            }).execute()
+                "is_read": False,
+                "created_at": datetime.utcnow().isoformat()
+            })
         except Exception as exc:
             print(f"[search_alerts] notification insert failed: {exc}")
 
@@ -75,23 +78,27 @@ def notify_wishlist_item_sold(product: Dict[str, Any]) -> None:
     title = product.get("title", "An item")
 
     try:
-        wishers = supabase_admin.table("wishlists").select("user_id").eq(
-            "product_id", product_id
-        ).execute()
+        wishers_ref = db.collection("wishlists").where("product_id", "==", product_id).stream()
+        wishers = [doc.to_dict() for doc in wishers_ref]
     except Exception as exc:
         print(f"[search_alerts] wishlist lookup failed: {exc}")
         return
 
-    for w in wishers.data or []:
-        if w["user_id"] == product.get("seller_id"):
+    for w in wishers:
+        if w.get("user_id") == product.get("seller_id"):
             continue
         try:
-            supabase_admin.table("notifications").insert({
+            notif_id = str(uuid.uuid4())
+            db.collection("notifications").document(notif_id).set({
+                "id": notif_id,
                 "user_id": w["user_id"],
                 "type": "product_update",
                 "title": "Wishlist item sold",
                 "message": f"'{title}' has been marked as sold.",
                 "link_url": f"/product.html?id={product_id}",
-            }).execute()
+                "is_read": False,
+                "created_at": datetime.utcnow().isoformat()
+            })
         except Exception as exc:
             print(f"[search_alerts] sold notification failed: {exc}")
+

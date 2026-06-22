@@ -2,22 +2,21 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException, status, Form, File, UploadFile
 from pydantic import BaseModel
 from typing import List, Optional
-from api.supabase_client import supabase, supabase_admin
+from datetime import datetime
+from api.firebase_client import db
 from api.dependencies import get_current_user
 from api.config import CATEGORIES, CONDITIONS, LISTING_STATUSES
 from api.search_alerts import notify_saved_search_matches, notify_wishlist_item_sold
 from api.db_features import (
-    apply_listing_status_filter,
     get_product_status,
     has_listing_status_column,
-    MIGRATION_HINT,
 )
 from api.storage_utils import (
     upload_product_image,
     extract_storage_path,
     resolve_product_images,
     resolve_products_list,
-    BUCKET,
+    delete_storage_files,
 )
 
 router = APIRouter(prefix="/products", tags=["products"])
@@ -40,65 +39,124 @@ async def get_products(
     sort_by: Optional[str] = "newest" # newest, price_asc, price_desc
 ):
     try:
-        # Build query
-        query = supabase_admin.table("products").select("*, profiles(full_name, avatar_url)").eq("is_approved", True)
-
-        # Marketplace browse: active only; seller dashboard: all statuses unless filtered
+        query_ref = db.collection("products")
         if seller_id:
-            query = query.eq("seller_id", seller_id)
-            if status:
-                if status not in LISTING_STATUSES:
-                    raise HTTPException(status_code=400, detail="Invalid status.")
-                query = apply_listing_status_filter(query, status)
-        else:
-            query = apply_listing_status_filter(query, status if status else "active")
+            query_ref = query_ref.where("seller_id", "==", seller_id)
+            
+        docs = query_ref.stream()
+        products = []
         
-        # Apply filters
-        if category:
-            query = query.eq("category", category)
-        if condition:
-            query = query.eq("condition", condition)
-        if min_price is not None:
-            query = query.gte("price", min_price)
-        if max_price is not None:
-            query = query.lte("price", max_price)
-        if location:
-            query = query.ilike("location", f"%{location}%")
-        if search:
-            # Simple text search on title or description
-            query = query.or_(f"title.ilike.%{search}%,description.ilike.%{search}%")
+        for doc in docs:
+            prod = doc.to_dict()
+            # Standard marketplace query requires is_approved to be True (default fallback is True)
+            if not prod.get("is_approved", True):
+                continue
+                
+            prod_status = prod.get("status") or "active"
+            if seller_id:
+                if status:
+                    if status not in LISTING_STATUSES:
+                        raise HTTPException(status_code=400, detail="Invalid status.")
+                    if prod_status != status:
+                        continue
+            else:
+                target_status = status if status else "active"
+                if prod_status != target_status:
+                    continue
+            
+            # Apply filters in-memory
+            if category:
+                if prod.get("category") != category:
+                    continue
+            if condition:
+                if prod.get("condition") != condition:
+                    continue
+            if min_price is not None:
+                if float(prod.get("price", 0)) < min_price:
+                    continue
+            if max_price is not None:
+                if float(prod.get("price", 0)) > max_price:
+                    continue
+            if location:
+                if location.lower() not in (prod.get("location") or "").lower():
+                    continue
+            if search:
+                term = search.lower()
+                title = (prod.get("title") or "").lower()
+                desc = (prod.get("description") or "").lower()
+                if term not in title and term not in desc:
+                    continue
+                    
+            products.append(prod)
             
         # Apply sorting
         if sort_by == "newest":
-            query = query.order("created_at", desc=True)
+            products.sort(key=lambda x: x.get("created_at") or "", reverse=True)
         elif sort_by == "price_asc":
-            query = query.order("price", desc=False)
+            products.sort(key=lambda x: float(x.get("price") or 0))
         elif sort_by == "price_desc":
-            query = query.order("price", desc=True)
+            products.sort(key=lambda x: float(x.get("price") or 0), reverse=True)
             
-        res = query.execute()
-        return resolve_products_list(res.data or [])
+        # Join profiles info
+        seller_ids = {p["seller_id"] for p in products if p.get("seller_id")}
+        seller_profiles = {}
+        for s_id in seller_ids:
+            try:
+                prof_doc = db.collection("profiles").document(s_id).get()
+                if prof_doc.exists:
+                    prof_data = prof_doc.to_dict()
+                    seller_profiles[s_id] = {
+                        "full_name": prof_data.get("full_name"),
+                        "avatar_url": prof_data.get("avatar_url")
+                    }
+                else:
+                    seller_profiles[s_id] = {"full_name": "User", "avatar_url": None}
+            except Exception:
+                seller_profiles[s_id] = {"full_name": "User", "avatar_url": None}
+                
+        for p in products:
+            p["profiles"] = seller_profiles.get(p.get("seller_id"), {"full_name": "User", "avatar_url": None})
+            
+        return resolve_products_list(products)
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
 @router.get("/{id}")
 async def get_product_details(id: str):
     try:
-        # Get product and seller info
-        res = supabase_admin.table("products").select("*, profiles(full_name, avatar_url, role)").eq("id", id).execute()
-        if not res.data:
+        # Get product
+        prod_doc = db.collection("products").document(id).get()
+        if not prod_doc.exists:
             raise HTTPException(status_code=404, detail="Product not found.")
             
-        product = res.data[0]
+        product = prod_doc.to_dict()
+        
+        # Get seller profile details
+        seller_id = product.get("seller_id")
+        if seller_id:
+            prof_doc = db.collection("profiles").document(seller_id).get()
+            if prof_doc.exists:
+                prof_data = prof_doc.to_dict()
+                product["profiles"] = {
+                    "full_name": prof_data.get("full_name"),
+                    "avatar_url": prof_data.get("avatar_url"),
+                    "role": prof_data.get("role", "user")
+                }
+            else:
+                product["profiles"] = {"full_name": "User", "avatar_url": None, "role": "user"}
+        else:
+            product["profiles"] = {"full_name": "User", "avatar_url": None, "role": "user"}
         
         # Get reviews average rating and reviews count
-        reviews_res = supabase_admin.table("reviews").select("rating").eq("product_id", id).execute()
-        reviews = reviews_res.data
+        reviews_ref = db.collection("reviews").where("product_id", "==", id).stream()
+        reviews = [doc.to_dict() for doc in reviews_ref]
         
         avg_rating = 0.0
         reviews_count = len(reviews)
         if reviews_count > 0:
-            avg_rating = sum(r["rating"] for r in reviews) / reviews_count
+            avg_rating = sum(r.get("rating", 0) for r in reviews) / reviews_count
             
         product["average_rating"] = round(avg_rating, 1)
         product["reviews_count"] = reviews_count
@@ -131,7 +189,7 @@ async def create_product(
     product_id = str(uuid.uuid4())
     image_urls = []
     
-    # Upload images to Supabase Storage (private bucket — store paths, sign URLs on read)
+    # Upload images to Storage
     for idx, image in enumerate(images):
         if not image.content_type or not image.content_type.startswith("image/"):
             continue
@@ -144,7 +202,7 @@ async def create_product(
                 c for c in (image.filename or f"image{idx}.jpg")
                 if c.isalnum() or c in (".", "-", "_")
             ).strip() or f"image{idx}.jpg"
-            file_path = f"{product_id}/{idx}_{safe_name}"
+            file_path = f"products/{product_id}/{idx}_{safe_name}"
 
             upload_product_image(file_path, file_bytes, image.content_type)
             image_urls.append(file_path)
@@ -160,7 +218,7 @@ async def create_product(
         image_urls.append("https://images.unsplash.com/photo-1531403009284-440f080d1e12?auto=format&fit=crop&w=600&q=80")
         
     try:
-        # Insert product into DB
+        # Insert product into Firestore
         product_data = {
             "id": product_id,
             "seller_id": current_user["id"],
@@ -172,21 +230,18 @@ async def create_product(
             "location": location,
             "images": image_urls,
             "is_approved": True,
+            "status": "active",
+            "created_at": datetime.utcnow().isoformat(),
+            "updated_at": datetime.utcnow().isoformat(),
         }
-        if has_listing_status_column():
-            product_data["status"] = "active"
 
-        res = supabase_admin.table("products").insert(product_data).execute()
-        created = res.data[0]
-        notify_saved_search_matches(created)
-        return resolve_product_images(created)
+        db.collection("products").document(product_id).set(product_data)
+        notify_saved_search_matches(product_data)
+        return resolve_product_images(product_data)
     except Exception as e:
         # Clean up uploaded files on error
         try:
-            for stored in image_urls:
-                path = extract_storage_path(stored)
-                if path:
-                    supabase_admin.storage.from_(BUCKET).remove([path])
+            delete_storage_files(image_urls)
         except Exception:
             pass
         raise HTTPException(status_code=400, detail=str(e))
@@ -206,11 +261,11 @@ async def update_product(
 ):
     try:
         # Get existing product details
-        prod_res = supabase_admin.table("products").select("*").eq("id", id).execute()
-        if not prod_res.data:
+        prod_doc = db.collection("products").document(id).get()
+        if not prod_doc.exists:
             raise HTTPException(status_code=404, detail="Product not found.")
             
-        product = prod_res.data[0]
+        product = prod_doc.to_dict()
         
         # Access control: seller or admin
         if product["seller_id"] != current_user["id"] and current_user["role"] != "admin":
@@ -240,7 +295,6 @@ async def update_product(
         # Handle image list merging
         image_urls = []
         if existing_images is not None:
-            image_urls = []
             for item in existing_images.split(","):
                 item = item.strip()
                 if not item:
@@ -248,7 +302,7 @@ async def update_product(
                 path = extract_storage_path(item)
                 image_urls.append(path if path else item)
         else:
-            image_urls = list(product["images"] or [])
+            image_urls = list(product.get("images") or [])
 
         # Upload new images
         for idx, image in enumerate(new_images):
@@ -262,30 +316,36 @@ async def update_product(
                 c for c in (image.filename or f"image{idx}.jpg")
                 if c.isalnum() or c in (".", "-", "_")
             ).strip() or f"image{idx}.jpg"
-            file_path = f"{id}/new_{uuid.uuid4().hex[:6]}_{safe_name}"
+            file_path = f"products/{id}/new_{uuid.uuid4().hex[:6]}_{safe_name}"
 
             upload_product_image(file_path, file_bytes, image.content_type)
             image_urls.append(file_path)
 
         update_data["images"] = image_urls
+        update_data["updated_at"] = datetime.utcnow().isoformat()
+        
+        # Save product updates in database
+        db.collection("products").document(id).update(update_data)
         
         # Trigger notifications for updates to users who wishlisted this
-        # Save product updates in database
-        res = supabase_admin.table("products").update(update_data).eq("id", id).execute()
-        
-        # Create a notification for wishlist owners
         if title or price:
-            wishers = supabase_admin.table("wishlists").select("user_id").eq("product_id", id).execute()
-            for w in wishers.data:
-                supabase_admin.table("notifications").insert({
-                    "user_id": w["user_id"],
+            wishers_ref = db.collection("wishlists").where("product_id", "==", id).stream()
+            for w in wishers_ref:
+                w_data = w.to_dict()
+                notif_id = str(uuid.uuid4())
+                db.collection("notifications").document(notif_id).set({
+                    "id": notif_id,
+                    "user_id": w_data["user_id"],
                     "type": "product_update",
                     "title": "Wishlist item updated!",
                     "message": f"The item '{product['title']}' has been updated by the seller.",
-                    "link_url": f"/product.html?id={id}"
-                }).execute()
+                    "link_url": f"/product.html?id={id}",
+                    "is_read": False,
+                    "created_at": datetime.utcnow().isoformat()
+                })
 
-        return resolve_product_images(res.data[0])
+        updated_product = db.collection("products").document(id).get().to_dict()
+        return resolve_product_images(updated_product)
     except HTTPException:
         raise
     except Exception as e:
@@ -302,23 +362,23 @@ async def update_listing_status(
             status_code=400,
             detail=f"Invalid status. Must be one of {LISTING_STATUSES}",
         )
-    if not has_listing_status_column():
-        raise HTTPException(
-            status_code=503,
-            detail=f"Listing status is not available yet. {MIGRATION_HINT}",
-        )
     try:
-        prod_res = supabase_admin.table("products").select("*").eq("id", id).execute()
-        if not prod_res.data:
+        prod_doc = db.collection("products").document(id).get()
+        if not prod_doc.exists:
             raise HTTPException(status_code=404, detail="Product not found.")
 
-        product = prod_res.data[0]
+        product = prod_doc.to_dict()
         if product["seller_id"] != current_user["id"] and current_user["role"] != "admin":
             raise HTTPException(status_code=403, detail="Forbidden.")
 
         previous_status = get_product_status(product)
-        res = supabase_admin.table("products").update({"status": body.status}).eq("id", id).execute()
-        updated = res.data[0]
+        
+        db.collection("products").document(id).update({
+            "status": body.status,
+            "updated_at": datetime.utcnow().isoformat()
+        })
+        
+        updated = db.collection("products").document(id).get().to_dict()
 
         if body.status == "sold" and previous_status != "sold":
             notify_wishlist_item_sold(updated)
@@ -334,29 +394,28 @@ async def update_listing_status(
 async def delete_product(id: str, current_user: dict = Depends(get_current_user)):
     try:
         # Check product
-        prod_res = supabase_admin.table("products").select("*").eq("id", id).execute()
-        if not prod_res.data:
+        prod_doc = db.collection("products").document(id).get()
+        if not prod_doc.exists:
             raise HTTPException(status_code=404, detail="Product not found.")
             
-        product = prod_res.data[0]
+        product = prod_doc.to_dict()
         
         # Access control: seller or admin
         if product["seller_id"] != current_user["id"] and current_user["role"] != "admin":
             raise HTTPException(status_code=403, detail="Forbidden: You are not authorized to delete this listing.")
             
         # Delete from DB
-        supabase_admin.table("products").delete().eq("id", id).execute()
+        db.collection("products").document(id).delete()
         
-        # Attempt to delete all images from Storage bucket under folder `id/`
+        # Attempt to delete all images from Storage
         try:
-            # List files in folder
             files_to_delete = []
-            for stored in product["images"]:
+            for stored in product.get("images") or []:
                 path = extract_storage_path(stored)
                 if path:
                     files_to_delete.append(path)
             if files_to_delete:
-                supabase_admin.storage.from_(BUCKET).remove(files_to_delete)
+                delete_storage_files(files_to_delete)
         except Exception:
             pass # Fail silently for storage deletion, main task is database deletion
             
@@ -365,3 +424,4 @@ async def delete_product(id: str, current_user: dict = Depends(get_current_user)
         raise
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+

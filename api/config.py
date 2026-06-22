@@ -4,9 +4,9 @@ from dotenv import load_dotenv
 # Load env variables for local development
 load_dotenv()
 
-SUPABASE_URL = os.getenv("SUPABASE_URL", "")
-SUPABASE_KEY = os.getenv("SUPABASE_KEY", "")  # Anon key
-SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
+FIREBASE_SERVICE_ACCOUNT_KEY = os.getenv("FIREBASE_SERVICE_ACCOUNT_KEY", "serviceAccountKey.json")
+LOCAL_MEDIA_ROOT = os.getenv("LOCAL_MEDIA_ROOT", "media")
+
 
 # Parse admin emails list
 admin_emails_str = os.getenv("ADMIN_EMAILS", "")

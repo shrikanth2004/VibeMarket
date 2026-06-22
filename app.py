@@ -40,6 +40,7 @@ app.include_router(saved_searches.router, prefix="/api")
 # Mount CSS and JS folders
 app.mount("/css", StaticFiles(directory="css"), name="css")
 app.mount("/js", StaticFiles(directory="js"), name="js")
+app.mount("/media", StaticFiles(directory="media"), name="media")
 
 # Route HTML files directly
 @app.get("/")
@@ -76,7 +77,7 @@ def open_browser():
     if not os.path.exists(temp_file):
         with open(temp_file, "w") as f:
             f.write("opened")
-        print("🚀 Server started! Opening the marketplace in your default browser...")
+        print("Server started! Opening the marketplace in your default browser...")
         webbrowser.open("http://127.0.0.1:8000")
 
 # Local script runner execution
