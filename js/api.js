@@ -1,4 +1,5 @@
 // VibeMarket Client API Wrapper — Firebase Auth Edition
+import { identifyUser, resetPostHog, track } from './posthog.js';
 
 import { getAuth, signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
@@ -174,10 +175,29 @@ export const api = {
       // Verify token with backend and get/create profile
       const profile = await request('/auth/verify-token', 'POST');
       setCurrentUser(profile);
+
+      // ── PostHog: identify user & capture login event ──────────────────────
+      identifyUser(profile.id, {
+        email: profile.email,
+        name:  profile.full_name,
+        role:  profile.role,
+      });
+      track('user_logged_in', {
+        method: 'google',
+        email:  profile.email,
+        name:   profile.full_name,
+        role:   profile.role,
+      });
+
       return result;
     },
 
     logout: async () => {
+      const user = getCurrentUser();
+      // ── PostHog: capture logout before clearing session ───────────────────
+      track('user_logged_out', { email: user?.email || '' });
+      resetPostHog();
+
       try {
         await signOut(auth);
       } catch (e) {
@@ -194,6 +214,8 @@ export const api = {
         const u = getCurrentUser() || {};
         setCurrentUser({ ...u, ...res.profile });
       }
+      // ── PostHog: profile updated ──────────────────────────────────────
+      track('profile_updated', { email: getCurrentUser()?.email || '' });
       return res;
     },
 
@@ -224,11 +246,27 @@ export const api = {
 
     get: (id) => request(`/products/${id}`, 'GET'),
 
-    create: (formData) => request('/products', 'POST', formData, true),
+    create: async (formData) => {
+      const result = await request('/products', 'POST', formData, true);
+      // ── PostHog: item listed ─────────────────────────────────────────────
+      track('item_listed', {
+        title:    formData.get ? formData.get('title')    : '',
+        category: formData.get ? formData.get('category') : '',
+        price:    formData.get ? formData.get('price')    : '',
+      });
+      return result;
+    },
 
     update: (id, formData) => request(`/products/${id}`, 'PUT', formData, true),
 
-    updateStatus: (id, status) => request(`/products/${id}/status`, 'PATCH', { status }),
+    updateStatus: async (id, status) => {
+      const result = await request(`/products/${id}/status`, 'PATCH', { status });
+      // ── PostHog: item sold ─────────────────────────────────────────────
+      if (status === 'sold') {
+        track('item_sold', { product_id: id });
+      }
+      return result;
+    },
 
     delete: (id) => request(`/products/${id}`, 'DELETE')
   },

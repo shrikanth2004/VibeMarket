@@ -26,12 +26,21 @@ if not firebase_admin._apps:
         except Exception as e:
             print(f"[Firebase] Error initializing with service account certificate from path: {e}")
 
+    # Build options — include storageBucket so firebase_admin.storage works
+    storage_bucket = os.getenv("FIREBASE_STORAGE_BUCKET", "")
+    options = {}
+    if storage_bucket:
+        options["storageBucket"] = storage_bucket
+    elif cred and hasattr(cred, "service_account_email"):
+        # Derive bucket from project_id if not explicitly set
+        pass
+
     # Initialize app
     try:
         if cred:
-            firebase_admin.initialize_app(cred)
+            firebase_admin.initialize_app(cred, options)
         else:
-            firebase_admin.initialize_app()
+            firebase_admin.initialize_app(options=options if options else None)
             print("[Firebase] Initialized with application default credentials.")
     except Exception as e:
         print(f"[Firebase] Failed to initialize: {e}")
