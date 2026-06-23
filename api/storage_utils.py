@@ -1,8 +1,8 @@
-"""Firebase Storage helpers for product and avatar images.
+"""Cloudinary storage helpers for product and avatar images.
 
-Images are uploaded to Firebase Storage and served via their public download URL.
-Falls back to local filesystem storage when Firebase Storage bucket is not configured
-(useful for local development without a storage bucket).
+Images are uploaded to Cloudinary and served via their CDN URL.
+Falls back to local filesystem storage only in local development
+when CLOUDINARY_CLOUD_NAME is not configured.
 """
 
 from typing import List, Optional
@@ -11,44 +11,59 @@ import io
 from pathlib import Path
 from api.config import LOCAL_MEDIA_ROOT
 
-# Firebase Storage bucket name from env
-STORAGE_BUCKET = os.getenv("FIREBASE_STORAGE_BUCKET", "")
+# Cloudinary config from environment
+CLOUDINARY_CLOUD_NAME = os.getenv("CLOUDINARY_CLOUD_NAME", "")
+CLOUDINARY_API_KEY = os.getenv("CLOUDINARY_API_KEY", "")
+CLOUDINARY_API_SECRET = os.getenv("CLOUDINARY_API_SECRET", "")
+
+IS_VERCEL = bool(os.getenv("VERCEL") or os.getenv("VERCEL_ENV"))
 
 
-def _get_bucket():
-    """Return the Firebase Storage bucket, or None if not configured."""
-    if not STORAGE_BUCKET:
-        return None
-    try:
-        from firebase_admin import storage
-        return storage.bucket(STORAGE_BUCKET)
-    except Exception as e:
-        print(f"[storage] Firebase Storage not available: {e}")
-        return None
+def _cloudinary_configured() -> bool:
+    return bool(CLOUDINARY_CLOUD_NAME and CLOUDINARY_API_KEY and CLOUDINARY_API_SECRET)
+
+
+def _upload_to_cloudinary(file_bytes: bytes, file_path: str, content_type: str) -> str:
+    """Upload bytes to Cloudinary and return the secure CDN URL."""
+    import cloudinary
+    import cloudinary.uploader
+
+    cloudinary.config(
+        cloud_name=CLOUDINARY_CLOUD_NAME,
+        api_key=CLOUDINARY_API_KEY,
+        api_secret=CLOUDINARY_API_SECRET,
+        secure=True
+    )
+
+    # Derive a clean public_id from the file_path (no extension)
+    public_id = file_path.rsplit(".", 1)[0].replace("\\", "/")
+
+    result = cloudinary.uploader.upload(
+        file_bytes,
+        public_id=public_id,
+        resource_type="image",
+        overwrite=True,
+    )
+    return result["secure_url"]
 
 
 def upload_product_image(file_path: str, file_bytes: bytes, content_type: str) -> str:
-    """Upload image to Firebase Storage. Returns a public download URL.
-    Falls back to local filesystem only in local dev (not on Vercel)."""
-    bucket = _get_bucket()
-    IS_VERCEL = os.getenv("VERCEL") or os.getenv("VERCEL_ENV")
+    """Upload image to Cloudinary. Returns a public CDN URL.
+    Falls back to local filesystem only in local dev when Cloudinary is not configured."""
 
-    if bucket:
+    if _cloudinary_configured():
         try:
-            blob = bucket.blob(file_path)
-            blob.upload_from_string(file_bytes, content_type=content_type)
-            blob.make_public()
-            url = blob.public_url
-            print(f"[storage] Uploaded to Firebase Storage: {url}")
+            url = _upload_to_cloudinary(file_bytes, file_path, content_type)
+            print(f"[storage] Uploaded to Cloudinary: {url}")
             return url
         except Exception as e:
             if IS_VERCEL:
-                raise RuntimeError(f"Image upload failed (Firebase Storage error): {e}")
-            print(f"[storage] Firebase Storage upload failed, falling back to local: {e}")
+                raise RuntimeError(f"Image upload failed (Cloudinary error): {e}")
+            print(f"[storage] Cloudinary upload failed, falling back to local: {e}")
     elif IS_VERCEL:
         raise RuntimeError(
-            "Image upload failed: FIREBASE_STORAGE_BUCKET env variable is not set on Vercel. "
-            "Please add it in your Vercel project settings."
+            "Image upload failed: Cloudinary env variables are not set on Vercel. "
+            "Add CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET."
         )
 
     # Local filesystem fallback (dev only)
@@ -56,37 +71,44 @@ def upload_product_image(file_path: str, file_bytes: bytes, content_type: str) -
     local_path.parent.mkdir(parents=True, exist_ok=True)
     with open(local_path, "wb") as f:
         f.write(file_bytes)
-
     return f"/media/{file_path}"
 
 
 def upload_avatar_image(file_path: str, file_bytes: bytes, content_type: str) -> str:
-    """Upload avatar to Firebase Storage. Returns a public download URL."""
+    """Upload avatar to Cloudinary. Returns a public CDN URL."""
     return upload_product_image(file_path, file_bytes, content_type)
 
 
 def delete_storage_files(paths: List[str]):
-    """Delete files from Firebase Storage or local filesystem."""
-    bucket = _get_bucket()
+    """Delete files from Cloudinary or local filesystem."""
+    if _cloudinary_configured():
+        import cloudinary
+        import cloudinary.uploader
+
+        cloudinary.config(
+            cloud_name=CLOUDINARY_CLOUD_NAME,
+            api_key=CLOUDINARY_API_KEY,
+            api_secret=CLOUDINARY_API_SECRET,
+            secure=True
+        )
 
     for p in paths:
         if not p:
             continue
-        # Firebase Storage URL
-        if p.startswith("https://storage.googleapis.com") or p.startswith("https://firebasestorage.googleapis.com"):
-            if bucket:
-                try:
-                    # Extract blob path from URL
-                    # Public URL format: https://storage.googleapis.com/BUCKET/PATH
-                    blob_path = p.split(f"/{STORAGE_BUCKET}/")[-1]
-                    blob = bucket.blob(blob_path)
-                    blob.delete()
-                    print(f"[storage] Deleted from Firebase Storage: {blob_path}")
-                except Exception as e:
-                    print(f"[storage] Firebase Storage delete failed for {p}: {e}")
+        if p.startswith("https://res.cloudinary.com"):
+            # Extract public_id from Cloudinary URL
+            try:
+                import cloudinary.uploader
+                # URL format: https://res.cloudinary.com/CLOUD/image/upload/vXXXX/public_id.ext
+                parts = p.split("/upload/")
+                if len(parts) == 2:
+                    public_id = parts[1].split("/", 1)[-1].rsplit(".", 1)[0]
+                    cloudinary.uploader.destroy(public_id)
+                    print(f"[storage] Deleted from Cloudinary: {public_id}")
+            except Exception as e:
+                print(f"[storage] Cloudinary delete failed for {p}: {e}")
         elif p.startswith("http"):
-            # External URL we don't own — skip
-            continue
+            continue  # External URL we don't own
         else:
             # Local file
             try:
@@ -98,7 +120,7 @@ def delete_storage_files(paths: List[str]):
 
 
 def extract_storage_path(stored: str) -> Optional[str]:
-    """Return None for external URLs (they are stored as-is), relative path for local."""
+    """Return None for external URLs (stored as-is), relative path for local."""
     if not stored or not isinstance(stored, str):
         return None
     stored = stored.strip()
@@ -108,13 +130,11 @@ def extract_storage_path(stored: str) -> Optional[str]:
 
 
 def get_accessible_image_url(stored: str) -> str:
-    """Return a browser-loadable URL. Firebase Storage URLs are returned as-is."""
+    """Return a browser-loadable URL. Cloudinary/external URLs returned as-is."""
     if not stored:
         return stored
-    # External URLs or Data URIs — pass through unchanged
     if stored.startswith("http") or stored.startswith("data:"):
         return stored
-    # Local path — serve via /media static route
     path = stored.lstrip("/")
     return f"/media/{path}"
 
