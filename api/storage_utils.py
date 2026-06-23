@@ -29,8 +29,9 @@ def _get_bucket():
 
 def upload_product_image(file_path: str, file_bytes: bytes, content_type: str) -> str:
     """Upload image to Firebase Storage. Returns a public download URL.
-    Falls back to local filesystem if Firebase Storage is not configured."""
+    Falls back to local filesystem only in local dev (not on Vercel)."""
     bucket = _get_bucket()
+    IS_VERCEL = os.getenv("VERCEL") or os.getenv("VERCEL_ENV")
 
     if bucket:
         try:
@@ -41,13 +42,21 @@ def upload_product_image(file_path: str, file_bytes: bytes, content_type: str) -
             print(f"[storage] Uploaded to Firebase Storage: {url}")
             return url
         except Exception as e:
+            if IS_VERCEL:
+                raise RuntimeError(f"Image upload failed (Firebase Storage error): {e}")
             print(f"[storage] Firebase Storage upload failed, falling back to local: {e}")
+    elif IS_VERCEL:
+        raise RuntimeError(
+            "Image upload failed: FIREBASE_STORAGE_BUCKET env variable is not set on Vercel. "
+            "Please add it in your Vercel project settings."
+        )
 
-    # Local filesystem fallback
+    # Local filesystem fallback (dev only)
     local_path = Path(LOCAL_MEDIA_ROOT) / file_path
     local_path.parent.mkdir(parents=True, exist_ok=True)
     with open(local_path, "wb") as f:
         f.write(file_bytes)
+
     return f"/media/{file_path}"
 
 
