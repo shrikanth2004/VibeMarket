@@ -204,8 +204,8 @@ async def create_product(
             ).strip() or f"image{idx}.jpg"
             file_path = f"products/{product_id}/{idx}_{safe_name}"
 
-            upload_product_image(file_path, file_bytes, image.content_type)
-            image_urls.append(file_path)
+            image_url = upload_product_image(file_path, file_bytes, image.content_type)
+            image_urls.append(image_url)
         except Exception as upload_err:
             print(f"Upload error: {upload_err}")
             raise HTTPException(
@@ -318,8 +318,8 @@ async def update_product(
             ).strip() or f"image{idx}.jpg"
             file_path = f"products/{id}/new_{uuid.uuid4().hex[:6]}_{safe_name}"
 
-            upload_product_image(file_path, file_bytes, image.content_type)
-            image_urls.append(file_path)
+            image_url = upload_product_image(file_path, file_bytes, image.content_type)
+            image_urls.append(image_url)
 
         update_data["images"] = image_urls
         update_data["updated_at"] = datetime.utcnow().isoformat()
