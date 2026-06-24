@@ -302,7 +302,8 @@ export const api = {
   // Notifications
   notifications: {
     list: () => request('/notifications', 'GET'),
-    read: (id) => request(`/notifications/${id}/read`, 'PUT')
+    read: (id) => request(`/notifications/${id}/read`, 'PUT'),
+    readAll: () => request('/notifications/read-all', 'PUT')
   },
 
   // Admin Dashboard

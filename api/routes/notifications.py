@@ -15,6 +15,19 @@ async def get_notifications(current_user: dict = Depends(get_current_user)):
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
+@router.put("/read-all")
+async def mark_all_as_read(current_user: dict = Depends(get_current_user)):
+    try:
+        unread_refs = db.collection("notifications")\
+            .where("user_id", "==", current_user["id"])\
+            .where("is_read", "==", False)\
+            .stream()
+        for doc in unread_refs:
+            doc.reference.update({"is_read": True})
+        return {"message": "All notifications marked as read."}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
 @router.put("/{id}/read")
 async def mark_as_read(id: str, current_user: dict = Depends(get_current_user)):
     try:

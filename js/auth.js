@@ -81,8 +81,23 @@ function setupDropdowns() {
   if (bell && bellDropdown) {
     bell.addEventListener('click', (e) => {
       e.stopPropagation();
+      const isOpening = !bellDropdown.classList.contains('active');
       bellDropdown.classList.toggle('active');
       if (userDropdown) userDropdown.classList.remove('active');
+
+      if (isOpening) {
+        // Immediately hide the badge the moment the panel is opened
+        const badge = document.getElementById('notifications-badge');
+        if (badge) badge.style.display = 'none';
+
+        // Mark all as read on the server in the background
+        api.notifications.readAll().catch(() => {});
+
+        // Remove unread highlight from all visible items
+        document.querySelectorAll('.notification-item.unread').forEach(el => {
+          el.classList.remove('unread');
+        });
+      }
     });
   }
 
@@ -145,20 +160,12 @@ async function loadNotifications() {
     }).join('');
 
     list.querySelectorAll('.notification-item').forEach(item => {
-      item.addEventListener('click', async (e) => {
-        const id = item.getAttribute('data-id');
+      item.addEventListener('click', (e) => {
         const link = item.getAttribute('data-link');
-
-        try {
-          await api.notifications.read(id);
-        } catch (err) {
-          console.error(err);
-        }
+        item.classList.remove('unread');
 
         if (link && link !== '#') {
           window.location.href = link;
-        } else {
-          loadNotifications();
         }
       });
     });
