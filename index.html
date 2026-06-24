@@ -128,6 +128,15 @@
       <div id="saved-searches-list" class="saved-searches-list"></div>
     </section>
 
+    <!-- Recently Viewed (shows only if localStorage has entries) -->
+    <section class="saved-searches-panel glass-panel" id="recently-viewed-section" hidden style="margin-bottom: 0;">
+      <div class="section-header" style="margin-bottom: var(--space-md);">
+        <h2>Recently Viewed</h2>
+        <button type="button" id="clear-recently-viewed-btn" style="font-size: 0.8rem; background: none; border: none; color: var(--text-muted); cursor: pointer; text-decoration: underline;">Clear</button>
+      </div>
+      <div id="recently-viewed-grid" class="recently-viewed-strip"></div>
+    </section>
+
     <!-- Listings Grid -->
     <section class="marketplace-section">
       <div class="section-header">
@@ -144,6 +153,7 @@
       </div>
     </section>
   </main>
+
 
   <!-- Footer -->
   <footer class="site-footer">

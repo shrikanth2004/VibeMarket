@@ -918,3 +918,62 @@ textarea.form-input {
     gap: 4px;
   }
 }
+
+/* ── Recently Viewed Strip ─────────────────────────────────────────────── */
+.recently-viewed-strip {
+  display: flex;
+  gap: 12px;
+  overflow-x: auto;
+  padding-bottom: 8px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--glass-border) transparent;
+}
+
+.recently-viewed-strip::-webkit-scrollbar {
+  height: 4px;
+}
+
+.recently-viewed-strip::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.recently-viewed-strip::-webkit-scrollbar-thumb {
+  background: var(--glass-border);
+  border-radius: 2px;
+}
+
+.recently-viewed-card {
+  flex-shrink: 0;
+  width: 150px;
+  border-radius: var(--radius-md);
+  text-decoration: none;
+  color: inherit;
+  overflow: hidden;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.recently-viewed-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+}
+
+.recently-viewed-img-wrap {
+  position: relative;
+  width: 100%;
+  height: 100px;
+  overflow: hidden;
+}
+
+.recently-viewed-img-wrap img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.recently-viewed-img-wrap .card-tag {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  z-index: 1;
+}

@@ -313,8 +313,25 @@ export const api = {
     users: () => request('/admin/users', 'GET'),
     updateRole: (userId, role) => request(`/admin/users/${userId}/role`, 'PUT', { role }),
     deleteListing: (productId) => request(`/admin/listings/${productId}`, 'DELETE')
-  }
+  },
+
+  // Seller Follow System
+  sellers: {
+    follow: (sellerId) => request(`/sellers/${sellerId}/follow`, 'POST'),
+    unfollow: (sellerId) => request(`/sellers/${sellerId}/follow`, 'DELETE'),
+    following: () => request('/sellers/following', 'GET'),
+    isFollowing: (sellerId) => request(`/sellers/${sellerId}/is-following`, 'GET'),
+    followerCount: (sellerId) => request(`/sellers/${sellerId}/followers/count`, 'GET'),
+  },
+
+  // Transaction History
+  transactions: {
+    recordSale: (data) => request('/transactions', 'POST', data),
+    selling: () => request('/transactions/selling', 'GET'),
+    buying: () => request('/transactions/buying', 'GET'),
+  },
 };
+
 
 // Listen for Firebase auth state changes to keep token fresh
 onAuthStateChanged(auth, async (user) => {

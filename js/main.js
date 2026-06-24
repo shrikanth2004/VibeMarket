@@ -129,6 +129,14 @@ document.addEventListener('DOMContentLoaded', () => {
   loadProducts();
   refreshWishlistState();
   loadSavedSearchesPanel();
+  loadRecentlyViewed();
+
+  // Clear recently viewed
+  document.getElementById('clear-recently-viewed-btn')?.addEventListener('click', () => {
+    localStorage.removeItem('recently_viewed');
+    const section = document.getElementById('recently-viewed-section');
+    if (section) section.hidden = true;
+  });
 
   // 3. Category chips event listeners
   const chips = document.querySelectorAll('.category-chip');
@@ -332,4 +340,64 @@ export async function loadProducts() {
     `;
     document.getElementById('retry-load-products')?.addEventListener('click', () => loadProducts());
   }
+}
+
+// ── Recently Viewed ────────────────────────────────────────────────────────
+async function loadRecentlyViewed() {
+  const section = document.getElementById('recently-viewed-section');
+  const grid = document.getElementById('recently-viewed-grid');
+  if (!section || !grid) return;
+
+  const RECENTLY_VIEWED_KEY = 'recently_viewed';
+  let ids = [];
+  try {
+    ids = JSON.parse(localStorage.getItem(RECENTLY_VIEWED_KEY) || '[]');
+  } catch (e) { return; }
+
+  if (ids.length === 0) {
+    section.hidden = true;
+    return;
+  }
+
+  section.hidden = false;
+  grid.innerHTML = '<div class="loader" style="margin: 20px auto;" aria-hidden="true"></div>';
+
+  // Fetch each product (limit to 6 for display)
+  const idsToShow = ids.slice(0, 6);
+  const products = [];
+  for (const id of idsToShow) {
+    try {
+      const prod = await api.products.get(id);
+      products.push(prod);
+    } catch (e) {
+      // Product may have been deleted — skip
+    }
+  }
+
+  if (products.length === 0) {
+    section.hidden = true;
+    return;
+  }
+
+  grid.innerHTML = products.map(prod => {
+    const thumbnail = prod.images && prod.images.length > 0
+      ? prod.images[0]
+      : 'https://images.unsplash.com/photo-1531403009284-440f080d1e12?auto=format&fit=crop&w=600&q=80';
+    const formattedPrice = formatPrice(prod.price);
+    const condClass = (prod.condition || 'Good').toLowerCase().replace(/\s+/g, '_');
+
+    return `
+      <a href="product.html?id=${prod.id}" class="recently-viewed-card glass-panel">
+        <div class="recently-viewed-img-wrap">
+          <span class="card-tag condition-${condClass}" style="font-size: 10px;">${prod.condition}</span>
+          <img src="${thumbnail}" alt="${prod.title}" loading="lazy"
+            onerror="this.onerror=null;this.src='https://images.unsplash.com/photo-1531403009284-440f080d1e12?auto=format&fit=crop&w=600&q=80';">
+        </div>
+        <div style="padding: 10px 12px;">
+          <div style="font-size: 13px; font-weight: 600; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${prod.title}</div>
+          <div style="font-size: 13px; color: var(--accent-cyan); font-weight: 700; margin-top: 4px;">${formattedPrice}</div>
+        </div>
+      </a>
+    `;
+  }).join('');
 }

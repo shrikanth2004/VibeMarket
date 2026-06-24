@@ -40,6 +40,9 @@ document.addEventListener('DOMContentLoaded', () => {
   loadUserListings();
   loadUserFavorites();
   loadProfileSavedSearches();
+  loadFollowing();
+  loadTransactionHistory();
+  setupPushNotifications();
 
   // 5. Profile Edit form submission
   const editProfileForm = document.getElementById('edit-profile-form');
@@ -820,4 +823,219 @@ async function handleListingSubmit(e) {
     submitBtn.disabled = false;
     submitBtn.innerText = editId ? 'Save Changes' : 'Publish Listing';
   }
+}
+
+// ── Following Tab ──────────────────────────────────────────────────────────
+async function loadFollowing() {
+  const container = document.getElementById('following-list');
+  if (!container) return;
+
+  try {
+    const sellers = await api.sellers.following();
+
+    if (sellers.length === 0) {
+      container.innerHTML = `
+        <div style="text-align: center; padding: 40px 0; color: var(--text-muted);">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" style="width: 48px; height: 48px; margin: 0 auto 12px; display: block; opacity: 0.4;">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M15 19.128a9.38 9.38 0 0 0 2.625.372 9.337 9.337 0 0 0 4.121-.952 4.125 4.125 0 0 0-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 0 1 8.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0 1 11.964-3.07M12 6.375a3.375 3.375 0 1 1-6.75 0 3.375 3.375 0 0 1 6.75 0Zm8.25 2.25a2.625 2.625 0 1 1-5.25 0 2.625 2.625 0 0 1 5.25 0Z" />
+          </svg>
+          <p>You're not following any sellers yet.</p>
+          <p style="font-size: 13px; margin-top: 6px;">Visit a product listing and tap <strong>Follow Seller</strong> to stay updated.</p>
+        </div>`;
+      return;
+    }
+
+    const FALLBACK_AVATAR = 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=80&q=80';
+
+    container.innerHTML = sellers.map(s => `
+      <div class="user-listing-item" style="align-items: center;" data-seller-id="${s.seller_id}">
+        <img src="${s.avatar_url || FALLBACK_AVATAR}" alt="${s.full_name}"
+          style="width: 48px; height: 48px; border-radius: 50%; object-fit: cover; flex-shrink: 0;">
+        <div class="user-listing-details">
+          <div class="user-listing-title">${s.full_name}</div>
+          <div style="font-size: 12px; color: var(--text-secondary); margin-top: 2px;">${s.listing_count} active listing${s.listing_count !== 1 ? 's' : ''}</div>
+        </div>
+        <div class="user-listing-actions">
+          <button class="action-btn delete unfollow-btn" data-seller-id="${s.seller_id}" type="button">Unfollow</button>
+        </div>
+      </div>
+    `).join('');
+
+    container.querySelectorAll('.unfollow-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const sellerId = btn.getAttribute('data-seller-id');
+        if (!confirm('Unfollow this seller?')) return;
+        try {
+          await api.sellers.unfollow(sellerId);
+          showToast('Unfollowed seller', 'info');
+          loadFollowing();
+        } catch (err) {
+          showToast('Failed to unfollow: ' + err.message, 'error');
+        }
+      });
+    });
+
+  } catch (err) {
+    container.innerHTML = `<p style="color: var(--accent-rose); text-align: center;">${err.message}</p>`;
+  }
+}
+
+// ── Transaction History Tab ────────────────────────────────────────────────
+async function loadTransactionHistory() {
+  const sellingContainer = document.getElementById('transactions-selling-list');
+  const buyingContainer = document.getElementById('transactions-buying-list');
+  if (!sellingContainer && !buyingContainer) return;
+
+  const FALLBACK_IMG = 'https://images.unsplash.com/photo-1531403009284-440f080d1e12?auto=format&fit=crop&w=600&q=80';
+
+  function renderTxnRow(txn, type) {
+    const thumb = txn.product_images && txn.product_images.length > 0 ? txn.product_images[0] : FALLBACK_IMG;
+    const dateStr = new Date(txn.created_at).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' });
+    const price = formatPrice(txn.sale_price);
+    const secondaryLabel = type === 'selling'
+      ? `Buyer: <strong>${txn.buyer_name || 'Anonymous / Cash'}</strong>`
+      : `Seller: <strong>${txn.seller_name || 'Unknown'}</strong>`;
+
+    return `
+      <div class="user-listing-item">
+        <img src="${thumb}" alt="${txn.product_title}"
+          style="width: 56px; height: 56px; border-radius: 8px; object-fit: cover; flex-shrink: 0;">
+        <div class="user-listing-details">
+          <div class="user-listing-title">${txn.product_title}</div>
+          <div style="font-size: 12px; color: var(--text-secondary); margin-top: 2px;">
+            ${secondaryLabel} &nbsp;·&nbsp; ${dateStr}
+          </div>
+        </div>
+        <div class="user-listing-price" style="flex-shrink: 0;">${price}</div>
+      </div>
+    `;
+  }
+
+  // Load selling
+  if (sellingContainer) {
+    try {
+      const selling = await api.transactions.selling();
+      if (selling.length === 0) {
+        sellingContainer.innerHTML = `<p style="color: var(--text-muted); text-align: center; padding: 16px 0;">No sales recorded yet.</p>`;
+      } else {
+        sellingContainer.innerHTML = selling.map(t => renderTxnRow(t, 'selling')).join('');
+      }
+    } catch (err) {
+      sellingContainer.innerHTML = `<p style="color: var(--accent-rose);">${err.message}</p>`;
+    }
+  }
+
+  // Load buying
+  if (buyingContainer) {
+    try {
+      const buying = await api.transactions.buying();
+      if (buying.length === 0) {
+        buyingContainer.innerHTML = `<p style="color: var(--text-muted); text-align: center; padding: 16px 0;">No purchases recorded yet.</p>`;
+      } else {
+        buyingContainer.innerHTML = buying.map(t => renderTxnRow(t, 'buying')).join('');
+      }
+    } catch (err) {
+      buyingContainer.innerHTML = `<p style="color: var(--accent-rose);">${err.message}</p>`;
+    }
+  }
+}
+
+// ── Push Notifications ─────────────────────────────────────────────────────
+async function setupPushNotifications() {
+  const btn = document.getElementById('push-toggle-btn');
+  if (!btn) return;
+
+  // Check browser support
+  if (!('Notification' in window) || !('serviceWorker' in navigator)) {
+    btn.textContent = 'Not supported in this browser';
+    btn.disabled = true;
+    return;
+  }
+
+  // Register service worker
+  try {
+    await navigator.serviceWorker.register('/js/sw.js');
+  } catch (e) {
+    console.warn('SW registration failed:', e);
+  }
+
+  async function updateBtn() {
+    const permission = Notification.permission;
+    if (permission === 'denied') {
+      btn.textContent = '🚫 Blocked — enable in browser settings';
+      btn.disabled = true;
+      return;
+    }
+
+    const reg = await navigator.serviceWorker.ready;
+    const sub = await reg.pushManager.getSubscription();
+    if (sub) {
+      btn.textContent = '🔔 Disable Push Notifications';
+      btn.setAttribute('data-subscribed', 'true');
+    } else {
+      btn.textContent = '🔕 Enable Push Notifications';
+      btn.setAttribute('data-subscribed', 'false');
+    }
+    btn.disabled = false;
+  }
+
+  await updateBtn();
+
+  btn.addEventListener('click', async () => {
+    const isSubscribed = btn.getAttribute('data-subscribed') === 'true';
+    btn.disabled = true;
+    btn.textContent = 'Working...';
+
+    try {
+      const reg = await navigator.serviceWorker.ready;
+
+      if (isSubscribed) {
+        // Unsubscribe
+        const sub = await reg.pushManager.getSubscription();
+        if (sub) await sub.unsubscribe();
+        try { await api.notifications.readAll(); } catch (e) { /* ignore */ }
+        // Remove from backend
+        await fetch('/api/notifications/push-unsubscribe', {
+          method: 'DELETE',
+          headers: { 'Authorization': `Bearer ${localStorage.getItem('access_token')}` }
+        });
+        showToast('Push notifications disabled.', 'info');
+      } else {
+        // Request permission
+        const permission = await Notification.requestPermission();
+        if (permission !== 'granted') {
+          showToast('Permission denied. Please allow notifications in browser settings.', 'error');
+          await updateBtn();
+          return;
+        }
+
+        // Subscribe (VAPID not required for local; omit applicationServerKey for simplicity)
+        const sub = await reg.pushManager.subscribe({
+          userVisibleOnly: true,
+          // No applicationServerKey — works for demonstration; add VAPID key in production
+        }).catch(async () => {
+          // Some browsers require VAPID — show a local notification as fallback
+          new Notification('VibeMarket', { body: 'Push notifications enabled! You will be notified of new activity.' });
+          return null;
+        });
+
+        if (sub) {
+          // Save subscription to backend
+          await fetch('/api/notifications/push-subscribe', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${localStorage.getItem('access_token')}`
+            },
+            body: JSON.stringify({ subscription: sub.toJSON() })
+          });
+        }
+        showToast('Push notifications enabled! 🔔', 'success');
+      }
+    } catch (err) {
+      showToast('Error: ' + err.message, 'error');
+    } finally {
+      await updateBtn();
+    }
+  });
 }

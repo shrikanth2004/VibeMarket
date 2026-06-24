@@ -6,6 +6,22 @@ let currentImageIndex = 0;
 let productImages = [];
 let selectedRating = 0;
 
+// ── Recently Viewed ────────────────────────────────────────────────────────
+const RECENTLY_VIEWED_KEY = 'recently_viewed';
+const RECENTLY_VIEWED_MAX = 10;
+
+function trackRecentlyViewed(id) {
+  if (!id) return;
+  try {
+    const existing = JSON.parse(localStorage.getItem(RECENTLY_VIEWED_KEY) || '[]');
+    // Move to front, remove duplicates, cap at max
+    const updated = [id, ...existing.filter(i => i !== id)].slice(0, RECENTLY_VIEWED_MAX);
+    localStorage.setItem(RECENTLY_VIEWED_KEY, JSON.stringify(updated));
+  } catch (e) {
+    console.warn('Recently viewed tracking failed:', e);
+  }
+}
+
 document.addEventListener('DOMContentLoaded', async () => {
   // 1. Get product ID from URL
   const urlParams = new URLSearchParams(window.location.search);
@@ -17,7 +33,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     return;
   }
 
-  // 2. Fetch and render data
+  // 2. Track this product as recently viewed
+  trackRecentlyViewed(productId);
+
+  // 3. Fetch and render data
   await loadProductDetails();
   await loadComments();
   await loadReviews();
@@ -192,6 +211,16 @@ async function loadProductDetails() {
               <div class="seller-role">${seller.role}</div>
             </div>
           </div>
+
+          <!-- Follow Seller Button (hidden for own listings) -->
+          ${isLogged() && getCurrentUser()?.id !== prod.seller_id ? `
+            <button id="follow-seller-btn" class="form-submit-btn" data-seller-id="${prod.seller_id}"
+              style="background: var(--bg-secondary); border: 1px solid var(--glass-border); color: white; display: flex; align-items: center; justify-content: center; gap: 8px; margin-bottom: 10px;">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" style="width: 18px; height: 18px; color: var(--accent-cyan);"><path stroke-linecap="round" stroke-linejoin="round" d="M18 7.5v3m0 0v3m0-3h3m-3 0h-3m-2.25-4.125a3.375 3.375 0 1 1-6.75 0 3.375 3.375 0 0 1 6.75 0ZM3 19.235v-.11a6.375 6.375 0 0 1 12.75 0v.109A12.318 12.318 0 0 1 9.374 21c-2.331 0-4.512-.645-6.374-1.766Z" /></svg>
+              <span id="follow-btn-label">Follow Seller</span>
+            </button>
+          ` : ''}
+
           <button id="chat-start-btn" class="form-submit-btn" style="background: var(--bg-secondary); border: 1px solid var(--glass-border); color: white; display: flex; align-items: center; justify-content: center; gap: 8px;">
             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" style="width: 18px; height: 18px; color: var(--accent-cyan);">
               <path stroke-linecap="round" stroke-linejoin="round" d="M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.129.166 2.27.293 3.423.379.35.026.67.21.865.501L12 21l2.755-4.133a1.14 1.14 0 0 1 .865-.501 48.172 48.172 0 0 0 3.423-.379c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0 0 12 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018Z" />
@@ -203,7 +232,40 @@ async function loadProductDetails() {
       </div>
     `;
 
+    // Mark Sold to Buyer Modal (only for seller) — insert BEFORE overwriting innerHTML
+    const currentUser = getCurrentUser();
+    const sellerOwnedActive = isLogged() && currentUser?.id === prod.seller_id && prod.status === 'active';
+
     container.innerHTML = galleryHtml + sidebarHtml;
+
+    // Inject modal into body after innerHTML set
+    if (sellerOwnedActive) {
+      const existingModal = document.getElementById('sold-to-buyer-modal');
+      if (existingModal) existingModal.remove();
+      const modalEl = document.createElement('div');
+      modalEl.id = 'sold-to-buyer-modal';
+      modalEl.className = 'avatar-crop-modal';
+      modalEl.setAttribute('aria-hidden', 'true');
+      modalEl.setAttribute('role', 'dialog');
+      modalEl.innerHTML = `
+        <div class="avatar-crop-backdrop" id="sold-modal-backdrop"></div>
+        <div class="avatar-crop-dialog glass-panel" style="max-width: 420px;">
+          <h3 style="margin-bottom: 8px;">Mark as Sold</h3>
+          <p style="color: var(--text-secondary); font-size: 14px; margin-bottom: 20px;">Optionally enter the buyer's name or leave blank for a cash/anonymous sale.</p>
+          <div class="form-group">
+            <label for="sold-buyer-name" style="font-size: 13px;">Buyer Name (optional)</label>
+            <input type="text" id="sold-buyer-name" class="form-input" placeholder="e.g. Rahul Kumar" style="margin-top: 6px;">
+          </div>
+          <div class="avatar-crop-actions" style="margin-top: 20px;">
+            <button type="button" class="form-submit-btn secondary" id="sold-modal-cancel">Cancel</button>
+            <button type="button" class="form-submit-btn" id="sold-modal-confirm">Confirm Sale</button>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(modalEl);
+      setupSoldToBuyerModal(prod);
+    }
+
 
     // 5. Setup Carousel events
     initCarousel();
@@ -240,6 +302,37 @@ async function loadProductDetails() {
       chatBtn.addEventListener('click', () => {
         document.getElementById('new-comment-input').focus();
         document.getElementById('new-comment-input').scrollIntoView({ behavior: 'smooth' });
+      });
+    }
+
+    // Follow Seller button logic
+    const followBtn = document.getElementById('follow-seller-btn');
+    if (followBtn && isLogged()) {
+      const sellerId = followBtn.getAttribute('data-seller-id');
+      // Check current follow state
+      try {
+        const { is_following } = await api.sellers.isFollowing(sellerId);
+        updateFollowBtn(followBtn, is_following);
+      } catch (e) { /* ignore */ }
+
+      followBtn.addEventListener('click', async () => {
+        const isFollowing = followBtn.getAttribute('data-following') === 'true';
+        followBtn.disabled = true;
+        try {
+          if (isFollowing) {
+            await api.sellers.unfollow(sellerId);
+            showToast('Unfollowed seller', 'info');
+            updateFollowBtn(followBtn, false);
+          } else {
+            await api.sellers.follow(sellerId);
+            showToast('Now following seller! You\'ll be notified of new listings.', 'success');
+            updateFollowBtn(followBtn, true);
+          }
+        } catch (err) {
+          showToast(err.message, 'error');
+        } finally {
+          followBtn.disabled = false;
+        }
       });
     }
 
@@ -498,5 +591,70 @@ async function postReview() {
     showToast('Review submission failed: ' + error.message, 'error');
     submitBtn.disabled = false;
     submitBtn.innerText = 'Submit Review';
+  }
+}
+
+// ── Follow Button Helper ───────────────────────────────────────────────────
+function updateFollowBtn(btn, isFollowing) {
+  btn.setAttribute('data-following', isFollowing ? 'true' : 'false');
+  const label = document.getElementById('follow-btn-label');
+  if (label) label.textContent = isFollowing ? 'Unfollow Seller' : 'Follow Seller';
+  btn.style.borderColor = isFollowing ? 'var(--accent-cyan)' : 'var(--glass-border)';
+}
+
+// ── Mark Sold to Buyer Modal ──────────────────────────────────────────────
+function setupSoldToBuyerModal(prod) {
+  const modal = document.getElementById('sold-to-buyer-modal');
+  const backdrop = document.getElementById('sold-modal-backdrop');
+  const cancelBtn = document.getElementById('sold-modal-cancel');
+  const confirmBtn = document.getElementById('sold-modal-confirm');
+
+  if (!modal) return;
+
+  // Intercept the Mark Sold button in the listing area (profile page sets status directly;
+  // here on the product page we open the modal first)
+  const openModal = () => {
+    modal.classList.add('active');
+    modal.setAttribute('aria-hidden', 'false');
+  };
+
+  const closeModal = () => {
+    modal.classList.remove('active');
+    modal.setAttribute('aria-hidden', 'true');
+  };
+
+  backdrop.addEventListener('click', closeModal);
+  cancelBtn.addEventListener('click', closeModal);
+
+  confirmBtn.addEventListener('click', async () => {
+    const buyerName = document.getElementById('sold-buyer-name')?.value.trim() || '';
+    confirmBtn.disabled = true;
+    confirmBtn.textContent = 'Saving...';
+    try {
+      await api.transactions.recordSale({
+        product_id: prod.id,
+        buyer_name: buyerName || null,
+        sale_price: prod.price,
+      });
+      showToast('Sale recorded! Listing marked as sold.', 'success');
+      closeModal();
+      setTimeout(() => window.location.reload(), 1200);
+    } catch (err) {
+      showToast('Failed to record sale: ' + err.message, 'error');
+      confirmBtn.disabled = false;
+      confirmBtn.textContent = 'Confirm Sale';
+    }
+  });
+
+  // Add a "Mark Sold" button to the product info panel for the seller
+  const infoPanel = document.querySelector('.product-info-panel');
+  if (infoPanel && prod.status === 'active') {
+    const markSoldBtn = document.createElement('button');
+    markSoldBtn.id = 'product-page-mark-sold-btn';
+    markSoldBtn.className = 'form-submit-btn';
+    markSoldBtn.style.cssText = 'margin-top: 12px; background: linear-gradient(135deg, #d97706, #b45309); width: 100%;';
+    markSoldBtn.textContent = '🏷️ Mark as Sold';
+    markSoldBtn.addEventListener('click', openModal);
+    infoPanel.appendChild(markSoldBtn);
   }
 }

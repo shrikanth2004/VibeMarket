@@ -237,7 +237,29 @@ async def create_product(
 
         db.collection("products").document(product_id).set(product_data)
         notify_saved_search_matches(product_data)
+
+        # Notify followers of this seller about the new listing
+        try:
+            followers_ref = db.collection("seller_follows") \
+                .where("seller_id", "==", current_user["id"]).stream()
+            for follow_doc in followers_ref:
+                follow = follow_doc.to_dict()
+                notif_id = str(uuid.uuid4())
+                db.collection("notifications").document(notif_id).set({
+                    "id": notif_id,
+                    "user_id": follow["follower_id"],
+                    "type": "new_listing",
+                    "title": "New listing from a seller you follow! 🛍️",
+                    "message": f"{current_user.get('full_name', 'A seller you follow')} posted '{title}'.",
+                    "link_url": f"/product.html?id={product_id}",
+                    "is_read": False,
+                    "created_at": datetime.utcnow().isoformat(),
+                })
+        except Exception as notify_err:
+            print(f"Follower notify error (non-fatal): {notify_err}")
+
         return resolve_product_images(product_data)
+
     except Exception as e:
         # Clean up uploaded files on error
         try:
